@@ -1,0 +1,84 @@
+# ── 프로덕션용 Docker Compose (Hetzner VPS) ────────────────────
+# 사용법: docker compose pull && docker compose up -d
+#
+# 필수 환경변수 (.env 파일):
+#   MYSQL_ROOT_PASSWORD, MYSQL_PASSWORD
+#   SECRET_KEY
+#   CLOUDFLARE_TUNNEL_TOKEN
+
+services:
+
+  # ── MariaDB ──────────────────────────────────────────────────
+  db:
+    image: mariadb:11
+    container_name: license-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: license_db
+      MYSQL_USER: license
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── FastAPI 백엔드 ────────────────────────────────────────────
+  backend:
+    image: ghcr.io/${GITHUB_REPOSITORY}:latest
+    container_name: license-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+pymysql://license:${MYSQL_PASSWORD}@db:3306/license_db
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+    volumes:
+      - uploads:/app/uploads
+    networks:
+      - internal
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Nginx 리버스 프록시 ───────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: license-nginx
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - uploads:/app/uploads:ro
+    ports:
+      - "127.0.0.1:8080:80"   # 로컬호스트에만 바인딩 (CF Tunnel이 연결)
+    networks:
+      - internal
+    depends_on:
+      - backend
+
+  # ── Cloudflare Tunnel ─────────────────────────────────────────
+  # Cloudflare Dashboard → Zero Trust → Networks → Tunnels 에서
+  # 터널 생성 후 토큰을 CLOUDFLARE_TUNNEL_TOKEN 에 설정
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: license-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - internal
+    depends_on:
+      - nginx
+
+volumes:
+  db_data:
+  uploads:
+
+networks:
+  internal:
+    driver: bridge

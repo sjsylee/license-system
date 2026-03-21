@@ -3,12 +3,31 @@ backend/venv/
 backend/__pycache__/
 backend/.env
 **/*.pyc
+**/*.pyo
 
 # Node
 frontend/node_modules/
 frontend/.next/
 frontend/.env.local
+frontend/*.tsbuildinfo
+
+# 환경변수 (루트)
+.env
+.env.local
+.env.*.local
+
+# 업로드 파일 (볼륨으로 관리)
+backend/uploads/*
+!backend/uploads/.gitkeep
 
 # 공통
 .DS_Store
-*.env
+Thumbs.db
+.idea/
+.vscode/
+
+# Docker 로컬 오버라이드
+docker-compose.override.yml
+
+# Claude 내부 파일
+.claude/

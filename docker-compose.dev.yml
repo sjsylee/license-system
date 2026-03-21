@@ -1,0 +1,29 @@
+# ── 로컬 개발용 Docker Compose ───────────────────────────────
+# 사용법: docker compose -f docker-compose.dev.yml up -d
+#
+# DB만 도커로, FastAPI/Next.js는 로컬에서 실행
+
+services:
+
+  db:
+    image: mariadb:11
+    container_name: license-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: license_db
+      MYSQL_USER: license
+      MYSQL_PASSWORD: license
+    ports:
+      - "3307:3306"
+    volumes:
+      - db_dev_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  db_dev_data:
