@@ -3,7 +3,7 @@
 import {
   ArrowLeftOutlined, CalendarOutlined, CopyOutlined, DeleteOutlined,
   EditOutlined, GithubOutlined, LaptopOutlined, MailOutlined,
-  PhoneOutlined, PlusOutlined, SearchOutlined, UserOutlined,
+  PhoneOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, UserOutlined,
 } from "@ant-design/icons";
 import {
   App, Badge, Button, Card, Col, DatePicker, Form, Input, InputNumber,
@@ -552,6 +552,9 @@ export default function ProgramDetailPage() {
                 />
               </Tooltip>
             )}
+            <Tooltip title="새로고침">
+              <Button icon={<ReloadOutlined />} onClick={() => load()} />
+            </Tooltip>
             <Button
               type="primary"
               icon={<PlusOutlined />}
