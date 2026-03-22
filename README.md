@@ -3,9 +3,17 @@
 **License issuance and validation system for desktop applications**
 **데스크톱 애플리케이션을 위한 라이선스 발급 및 검증 시스템**
 
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![MariaDB](https://img.shields.io/badge/MariaDB-11-003545?style=flat-square&logo=mariadb&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Ant Design](https://img.shields.io/badge/Ant_Design-6-0170FE?style=flat-square&logo=antdesign&logoColor=white)
+
 ---
 
-## Overview / 개요
+## 🗂️ Overview / 개요
 
 LicenseOS is a full-stack license management platform designed for software vendors who distribute Electron-based desktop applications. It provides a secure admin console for issuing license keys and a public validation API that desktop apps call at startup.
 
@@ -13,7 +21,7 @@ LicenseOS is a full-stack license management platform designed for software vend
 
 ---
 
-## Key Features / 주요 기능
+## ✨ Key Features / 주요 기능
 
 - **Multi-program management** — Manage licenses for multiple software products from a single dashboard
 - **HWID-based device fingerprinting** — Limit activations per license by hardware ID; auto-register new devices up to the allowed count
@@ -24,7 +32,7 @@ LicenseOS is a full-stack license management platform designed for software vend
 
 ---
 
-## Tech Stack / 기술 스택
+## 🛠️ Tech Stack / 기술 스택
 
 ### Backend
 | | |
@@ -54,36 +62,35 @@ LicenseOS is a full-stack license management platform designed for software vend
 
 ---
 
-## Architecture / 아키텍처
+## 🏗️ Architecture / 아키텍처
 
 ```mermaid
 graph TB
     subgraph Client["Client"]
         APP["🖥️ Electron Desktop App"]
-        ADMIN["👤 Admin Console<br/>(app.yjcode.org)"]
+        ADMIN["👤 Admin Console"]
     end
 
-    subgraph Cloudflare["Cloudflare"]
-        PAGES["Vercel<br/>(Next.js Hosting)"]
-        TUNNEL["Cloudflare Tunnel<br/>(api.yjcode.org)"]
+    subgraph Hosting["Hosting"]
+        PAGES["Vercel\n(Next.js)"]
+        TUNNEL["Cloudflare Tunnel\n(HTTPS)"]
     end
 
     subgraph VPS["OVHcloud VPS (Docker Compose)"]
-        NGINX["Nginx<br/>(reverse proxy + static)"]
-        API["FastAPI + Uvicorn<br/>(4 workers)"]
+        NGINX["Nginx\n(reverse proxy + static)"]
+        API["FastAPI + Uvicorn\n(4 workers)"]
         DB[("MariaDB 11")]
     end
 
     subgraph CICD["CI/CD (GitHub Actions)"]
-        CI_FE["frontend-ci.yml<br/>Next.js Build Check"]
-        CI_BE["backend-ci.yml<br/>Docker Build Check"]
-        CD_BE["backend-deploy.yml<br/>Build → ghcr.io → SSH Deploy"]
+        CI_FE["frontend-ci.yml\nNext.js Build Check"]
+        CI_BE["backend-ci.yml\nDocker Build Check"]
+        CD_BE["backend-deploy.yml\nBuild → ghcr.io → SSH Deploy"]
     end
 
-    APP -->|"POST /v1/validate<br/>(no auth)"| TUNNEL
-    ADMIN -->|"REST API<br/>Bearer Token"| TUNNEL
+    APP -->|"POST /v1/validate\n(no auth)"| TUNNEL
+    ADMIN -->|"REST API\nBearer Token"| TUNNEL
     TUNNEL --> NGINX
-    NGINX -->|"/uploads/ static"| NGINX
     NGINX --> API
     API <--> DB
 
@@ -95,7 +102,7 @@ graph TB
 
 ---
 
-## API Documentation / API 문서
+## 📖 API Documentation / API 문서
 
 FastAPI의 자동 생성 Swagger UI를 통해 모든 엔드포인트를 브라우저에서 직접 확인하고 테스트할 수 있습니다.
 
@@ -168,7 +175,7 @@ It always returns **HTTP 200** to prevent desktop app crashes, communicating err
 
 ---
 
-## CI/CD Pipeline / CI/CD 파이프라인
+## 🚀 CI/CD Pipeline / CI/CD 파이프라인
 
 Path-based filtering in GitHub Actions ensures only relevant workflows run, avoiding wasted CI minutes in a monorepo.
 
@@ -184,7 +191,7 @@ Frontend deployment is handled automatically by **Vercel** on every push to `mai
 
 ---
 
-## Local Development / 로컬 개발 환경
+## 💻 Local Development / 로컬 개발 환경
 
 ### Prerequisites
 - Docker
@@ -212,7 +219,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 # 4. Frontend (new terminal)
 cd frontend
 npm install
-echo "NEXT_PUBLIC_API_URL=http://localhost:8001" > .env.local
+# Create frontend/.env.local with: NEXT_PUBLIC_API_URL=http://localhost:8001
 npm run dev
 ```
 
@@ -224,26 +231,16 @@ npm run dev
 
 ---
 
-## Environment Variables / 환경변수
+## 🔑 Environment Variables / 환경변수
 
-### `backend/.env`
-```
-DATABASE_URL=mysql+pymysql://license:license@localhost:3307/license_db
-SECRET_KEY=your-secret-key-here
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
-```
+환경변수 전체 목록과 설명은 [`.env.example`](.env.example)을 참고하세요.
+See [`.env.example`](.env.example) for the full list of required environment variables.
 
-### `frontend/.env.local`
-```
-NEXT_PUBLIC_API_URL=http://localhost:8001
-```
-
-> Production secrets are managed via VPS `.env` and Vercel project settings. **Never commit secrets to git.**
+> ⚠️ **Never commit secrets to git.** Production secrets are managed via VPS `.env` file and Vercel project settings.
 
 ---
 
-## Troubleshooting / 트러블슈팅
+## 🔧 Troubleshooting / 트러블슈팅
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
@@ -256,25 +253,11 @@ NEXT_PUBLIC_API_URL=http://localhost:8001
 | `device_limit_reached` on validate | All device slots in use | Admin console → revoke a device, or increase `max_devices` |
 | Docker CI build fails | Dependency or syntax error in Dockerfile | Run `docker build ./backend` locally to reproduce |
 
-### DB Schema Changes (No Alembic)
-
-New **tables** are auto-created by `create_all` on startup. Column changes on **existing tables** require manual SQL:
-
-```bash
-# Local
-docker exec license-db mariadb -ulicense -plicense license_db \
-  -e "ALTER TABLE licenses ADD COLUMN new_field VARCHAR(100) NULL;"
-
-# Production (via SSH into VPS)
-docker exec license-db mariadb -ulicense -p${MYSQL_PASSWORD} license_db \
-  -e "ALTER TABLE licenses ADD COLUMN new_field VARCHAR(100) NULL;"
-```
-
-> ⚠️ Always run DB migration **before** deploying new backend code to avoid runtime errors on the live server.
+> 📄 For detailed developer workflows including DB schema migration, see [DEV.md](DEV.md).
 
 ---
 
-## 개발 노트 / 설계 고찰
+## 💡 개발 노트 / 설계 고찰
 
 실제 개발 과정에서 마주쳤던 문제들과 그에 대한 판단을 기록합니다.
 
