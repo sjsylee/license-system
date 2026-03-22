@@ -125,7 +125,7 @@ export default function LoginPage() {
         <Card>
           {error && (
             <Alert
-              message={error}
+              title={error}
               type="error"
               showIcon
               style={{ marginBottom: 20 }}
