@@ -35,5 +35,5 @@ USER appuser
 
 EXPOSE 8000
 
-# 프로덕션: uvicorn 4 workers
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# 프로덕션: uvicorn 2 workers (1GB RAM 환경 최적화)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
