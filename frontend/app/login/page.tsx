@@ -30,8 +30,8 @@ export default function LoginPage() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center p-4"
-      style={{ background: token.colorBgLayout, position: "relative", overflow: "hidden" }}
+      className="flex items-center justify-center p-4"
+      style={{ background: token.colorBgLayout, position: "fixed", inset: 0, overflow: "hidden" }}
     >
       <style>{`
         @keyframes orb1 {
