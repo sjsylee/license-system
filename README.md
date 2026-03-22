@@ -55,7 +55,7 @@ LicenseOS is a full-stack license management platform designed for software vend
 ### Infrastructure
 | | |
 |---|---|
-| VPS | OVHcloud (Docker Compose) |
+| VPS | Azure VM (Docker Compose) |
 | Tunnel | Cloudflare Tunnel (zero-config HTTPS) |
 | Registry | GitHub Container Registry (ghcr.io) |
 | CI/CD | GitHub Actions (path-based monorepo filtering) |
@@ -76,9 +76,9 @@ graph TB
         TUNNEL["Cloudflare Tunnel\n(HTTPS)"]
     end
 
-    subgraph VPS["OVHcloud VPS (Docker Compose)"]
-        NGINX["Nginx\n(reverse proxy + static)"]
-        API["FastAPI + Uvicorn\n(4 workers)"]
+    subgraph VPS["Azure VM (Docker Compose)"]
+        NGINX["Nginx<br/>(reverse proxy + static)"]
+        API["FastAPI + Uvicorn<br/>(2 workers)"]
         DB[("MariaDB 11")]
     end
 
