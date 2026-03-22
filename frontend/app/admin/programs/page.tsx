@@ -2,7 +2,7 @@
 
 import {
   CameraOutlined, DeleteOutlined, GithubOutlined,
-  PlusOutlined, RightOutlined, SearchOutlined, SettingOutlined,
+  PlusOutlined, ReloadOutlined, RightOutlined, SearchOutlined, SettingOutlined,
 } from "@ant-design/icons";
 import {
   App, Button, Card, Col, Form, Input, Modal, Popconfirm,
@@ -176,14 +176,19 @@ export default function ProgramsPage() {
             라이선스를 발급할 프로그램을 등록하고 관리하세요.
           </Text>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setCreateOpen(true)}
-          style={{ fontWeight: 600 }}
-        >
-          프로그램 등록
-        </Button>
+        <Space size={8}>
+          <Tooltip title="새로고침">
+            <Button icon={<ReloadOutlined />} onClick={() => load()} />
+          </Tooltip>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setCreateOpen(true)}
+            style={{ fontWeight: 600 }}
+          >
+            프로그램 등록
+          </Button>
+        </Space>
       </div>
 
       <div

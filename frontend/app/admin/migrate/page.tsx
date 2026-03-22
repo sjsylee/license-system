@@ -305,7 +305,7 @@ export default function MigratePage() {
           style={{ fontFamily: "monospace", fontSize: 12 }}
         />
         {parseError && (
-          <Alert type="error" message={parseError} style={{ marginTop: 12 }} showIcon />
+          <Alert type="error" title={parseError} style={{ marginTop: 12 }} showIcon />
         )}
       </Card>
 
