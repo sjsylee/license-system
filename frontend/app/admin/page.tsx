@@ -2,7 +2,7 @@
 
 import { AppstoreOutlined, CheckCircleOutlined, KeyOutlined, LaptopOutlined } from "@ant-design/icons";
 import Image from "next/image";
-import { Card, Col, Row, Statistic, Typography, theme } from "antd";
+import { Card, Col, Row, Typography, theme } from "antd";
 import { useEffect, useState } from "react";
 import { licenseApi, programApi, type License, type Program } from "@/lib/api";
 
@@ -77,31 +77,30 @@ export default function DashboardPage() {
         {stats.map((s) => (
           <Col xs={12} sm={12} md={6} key={s.title}>
             <Card loading={loading} style={{ height: "100%" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-                <div
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 12,
-                    background: s.color,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 20,
-                    flexShrink: 0,
-                  }}
-                >
-                  {s.icon}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 12,
+                      background: s.color,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 18,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {s.icon}
+                  </div>
+                  <span style={{ fontSize: 12, color: token.colorTextSecondary, whiteSpace: "nowrap" }}>
+                    {s.title}
+                  </span>
                 </div>
-                <Statistic
-                  title={
-                    <span style={{ fontSize: 12, color: token.colorTextSecondary }}>
-                      {s.title}
-                    </span>
-                  }
-                  value={s.value}
-                  styles={{ content: { fontSize: 24, fontWeight: 700, lineHeight: 1.3 } }}
-                />
+                <span style={{ fontSize: 28, fontWeight: 700, lineHeight: 1, color: token.colorText }}>
+                  {s.value}
+                </span>
               </div>
             </Card>
           </Col>

@@ -31,3 +31,6 @@ docker-compose.override.yml
 
 # Claude 내부 파일
 .claude/
+
+# 개인 배포 노트 (git 비공개)
+DEPLOY.md
