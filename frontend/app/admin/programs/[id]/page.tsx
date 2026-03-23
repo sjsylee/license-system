@@ -3,7 +3,7 @@
 import {
   ArrowLeftOutlined, CalendarOutlined, CopyOutlined, DeleteOutlined,
   EditOutlined, GithubOutlined, LaptopOutlined, MailOutlined,
-  PhoneOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, UserOutlined,
+  PhoneOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, TableOutlined, UserOutlined,
 } from "@ant-design/icons";
 import {
   App, Badge, Button, Card, Col, DatePicker, Form, Input, InputNumber,
@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import EmptyLottie from "@/components/EmptyLottie";
 import { licenseApi, programApi, type License, type Program } from "@/lib/api";
+import { formatKST } from "@/lib/utils";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 
@@ -83,6 +84,8 @@ export default function ProgramDetailPage() {
   const [isMobile, setIsMobile] = useState(false);
   const [editingMaxDevices, setEditingMaxDevices] = useState<number | null>(null);
   const [contactTarget, setContactTarget] = useState<License | null>(null);
+  const [sortKey, setSortKey] = useState<"newest" | "expiry_asc">("newest");
+  const [metaTarget, setMetaTarget] = useState<License | null>(null);
   const [form] = Form.useForm();
   const [extendForm] = Form.useForm();
   const [contactForm] = Form.useForm();
@@ -126,24 +129,16 @@ export default function ProgramDetailPage() {
       base = base.filter((l) => l.username.toLowerCase().includes(q));
     }
     return [...base].sort((a, b) => {
-      const aExpired = isExpired(a);
-      const bExpired = isExpired(b);
-      const aInactive = !a.is_active && !aExpired;
-      const bInactive = !b.is_active && !bExpired;
-      // 만료 → 맨 뒤
-      if (aExpired !== bExpired) return aExpired ? 1 : -1;
-      // 비활성 → 만료 앞, 활성 뒤
-      if (aInactive !== bInactive) return aInactive ? 1 : -1;
-      // 활성끼리: 남은 기간 오름차순, 무기한은 맨 뒤
-      if (!aExpired && !aInactive && !bExpired && !bInactive) {
-        if (!a.expires_at && !b.expires_at) return 0;
-        if (!a.expires_at) return 1;
-        if (!b.expires_at) return -1;
-        return dayjs(a.expires_at).diff(dayjs(b.expires_at));
+      if (sortKey === "newest") {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       }
-      return 0;
+      // expiry_asc: 무기한은 맨 뒤, 만료일 짧은 순
+      if (!a.expires_at && !b.expires_at) return 0;
+      if (!a.expires_at) return 1;
+      if (!b.expires_at) return -1;
+      return dayjs(a.expires_at).diff(dayjs(b.expires_at));
     });
-  }, [licenses, filterKey, searchQuery]);
+  }, [licenses, filterKey, searchQuery, sortKey]);
 
   async function handleCreate(values: any) {
     setSubmitting(true);
@@ -397,6 +392,17 @@ export default function ProgramDetailPage() {
             onClick={() => setDetailLicense(r)}
             style={{ width: 32, height: 32, padding: 0 }}
           />
+          {(program?.meta_schemas.length ?? 0) > 0 && (
+            <Tooltip title="메타 데이터">
+              <Button
+                type="text"
+                icon={<TableOutlined />}
+                onClick={() => setMetaTarget(r)}
+                style={{ width: 32, height: 32, padding: 0 }}
+                disabled={r.meta.length === 0}
+              />
+            </Tooltip>
+          )}
           <Popconfirm
             title="라이선스를 삭제하시겠습니까?"
             onConfirm={() => handleDelete(r.id)}
@@ -463,6 +469,15 @@ export default function ProgramDetailPage() {
                   />
                 </Tooltip>
                 <Button type="text" icon={<LaptopOutlined />} onClick={() => setDetailLicense(r)} style={{ width: 36, height: 36, padding: 0 }} />
+                {(program?.meta_schemas.length ?? 0) > 0 && (
+                  <Button
+                    type="text"
+                    icon={<TableOutlined />}
+                    onClick={() => setMetaTarget(r)}
+                    style={{ width: 36, height: 36, padding: 0 }}
+                    disabled={r.meta.length === 0}
+                  />
+                )}
                 <Popconfirm
                   title="라이선스를 삭제하시겠습니까?"
                   onConfirm={() => handleDelete(r.id)}
@@ -589,8 +604,8 @@ export default function ProgramDetailPage() {
         ))}
       </Row>
 
-      {/* 사용자 검색 */}
-      <div style={{ marginBottom: 12 }}>
+      {/* 사용자 검색 + 정렬 */}
+      <div style={{ marginBottom: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <Input
           prefix={<SearchOutlined style={{ color: token.colorTextSecondary }} />}
           placeholder="사용자 이름으로 검색"
@@ -598,6 +613,15 @@ export default function ProgramDetailPage() {
           onChange={(e) => setSearchQuery(e.target.value)}
           allowClear
           style={{ maxWidth: 280 }}
+        />
+        <Select
+          value={sortKey}
+          onChange={setSortKey}
+          style={{ width: 160 }}
+          options={[
+            { value: "newest", label: "최신 등록순" },
+            { value: "expiry_asc", label: "만료일 짧은 순" },
+          ]}
         />
       </div>
 
@@ -923,7 +947,7 @@ export default function ProgramDetailPage() {
                         {d.hwid}
                       </Text>
                       <Text type="secondary" style={{ fontSize: 11 }}>
-                        마지막 접속: {dayjs(d.last_seen_at).format("YYYY.MM.DD HH:mm")}
+                        마지막 접속: {d.last_seen_at ? formatKST(d.last_seen_at, true) : "-"}
                       </Text>
                     </div>
                     <Popconfirm
@@ -938,6 +962,48 @@ export default function ProgramDetailPage() {
                   </div>
                 ))}
               </Space>
+            )}
+          </div>
+        )}
+      </Modal>
+      {/* 메타 데이터 뷰어 Modal */}
+      <Modal
+        title={
+          <span>
+            메타 데이터
+            <Text type="secondary" style={{ fontSize: 12, fontWeight: 400, marginLeft: 8 }}>
+              {metaTarget?.username}
+            </Text>
+          </span>
+        }
+        open={metaTarget !== null}
+        onCancel={() => setMetaTarget(null)}
+        footer={<Button onClick={() => setMetaTarget(null)}>닫기</Button>}
+        width={420}
+      >
+        {metaTarget && (
+          <div style={{ marginTop: 16 }}>
+            {metaTarget.meta.length === 0 ? (
+              <Text type="secondary">메타 데이터가 없습니다.</Text>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {metaTarget.meta.map((m) => (
+                  <div
+                    key={m.key}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: token.colorFillAlter,
+                    }}
+                  >
+                    <Text strong style={{ fontSize: 13 }}>{m.key}</Text>
+                    <Text code style={{ fontSize: 13 }}>{m.value}</Text>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}

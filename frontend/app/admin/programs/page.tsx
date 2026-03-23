@@ -344,31 +344,36 @@ export default function ProgramsPage() {
                     </Tooltip>,
                   ]}
                 >
-                  <div style={{ marginBottom: 12 }}>
-                    <Text strong style={{ fontSize: 17 }}>
-                      {p.name}
-                    </Text>
-                    {p.description && (
-                      <div style={{ marginTop: 4 }}>
-                        <Text type="secondary" style={{ fontSize: 14 }}>
-                          {p.description}
-                        </Text>
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 6, alignContent: "flex-start" }}>
-                    {p.meta_schemas.map((s) => (
-                      <Tag
-                        key={s.id}
-                        color={VALUE_TYPE_COLORS[s.value_type]}
-                        style={{ margin: 0 }}
-                      >
-                        {s.key}
-                        <span style={{ marginLeft: 4, opacity: 0.7, fontSize: 10 }}>
-                          ({VALUE_TYPE_LABELS[s.value_type]})
-                        </span>
-                      </Tag>
-                    ))}
+                  <div
+                    style={{ cursor: "pointer" }}
+                    onClick={() => router.push(`/admin/programs/${p.id}`)}
+                  >
+                    <div style={{ marginBottom: 12 }}>
+                      <Text strong style={{ fontSize: 17 }}>
+                        {p.name}
+                      </Text>
+                      {p.description && (
+                        <div style={{ marginTop: 4 }}>
+                          <Text type="secondary" style={{ fontSize: 14 }}>
+                            {p.description}
+                          </Text>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 6, alignContent: "flex-start" }}>
+                      {p.meta_schemas.map((s) => (
+                        <Tag
+                          key={s.id}
+                          color={VALUE_TYPE_COLORS[s.value_type]}
+                          style={{ margin: 0 }}
+                        >
+                          {s.key}
+                          <span style={{ marginLeft: 4, opacity: 0.7, fontSize: 10 }}>
+                            ({VALUE_TYPE_LABELS[s.value_type]})
+                          </span>
+                        </Tag>
+                      ))}
+                    </div>
                   </div>
                 </Card>
               </Col>

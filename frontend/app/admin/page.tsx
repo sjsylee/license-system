@@ -2,9 +2,10 @@
 
 import { AppstoreOutlined, CheckCircleOutlined, KeyOutlined, LaptopOutlined } from "@ant-design/icons";
 import Image from "next/image";
-import { Card, Col, Row, Typography, theme } from "antd";
+import { Badge, Card, Col, List, Row, Tag, Typography, theme } from "antd";
 import { useEffect, useState } from "react";
 import { licenseApi, programApi, type License, type Program } from "@/lib/api";
+import { daysUntil, formatKST, isToday } from "@/lib/utils";
 
 const { Title, Text } = Typography;
 
@@ -34,6 +35,41 @@ export default function DashboardPage() {
 
   const activeLicenses = allLicenses.filter((l) => l.is_active);
   const totalDevices = allLicenses.reduce((sum, l) => sum + l.devices.length, 0);
+
+  const programMap = Object.fromEntries(programs.map((p) => [p.id, p.name]));
+
+  const recentDevices = allLicenses
+    .flatMap((l) =>
+      l.devices.map((d) => ({
+        device_name: d.device_name || d.hwid.slice(0, 8),
+        program_name: programMap[l.program_id] || "",
+        last_seen_at: d.last_seen_at,
+      }))
+    )
+    .filter((d) => d.last_seen_at)
+    .sort((a, b) => new Date(b.last_seen_at).getTime() - new Date(a.last_seen_at).getTime())
+    .slice(0, 5);
+
+  const todayLicenses = allLicenses
+    .filter((l) => isToday(l.created_at))
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 5)
+    .map((l) => ({
+      license_key: l.license_key,
+      program_name: programMap[l.program_id] || "",
+      created_at: l.created_at,
+    }));
+
+  const expiringLicenses = allLicenses
+    .filter((l) => l.is_active && l.expires_at && daysUntil(l.expires_at) <= 3)
+    .map((l) => ({
+      username: l.username,
+      program_name: programMap[l.program_id] || "",
+      expires_at: l.expires_at!,
+      days: daysUntil(l.expires_at!),
+    }))
+    .sort((a, b) => a.days - b.days)
+    .slice(0, 5);
 
   const stats = [
     {
@@ -107,6 +143,106 @@ export default function DashboardPage() {
         ))}
       </Row>
 
+      {/* Activity widgets */}
+      <div style={{ marginTop: 24 }}>
+        <Row gutter={[16, 16]}>
+          {/* 최근 접속 PC */}
+          <Col xs={24} md={8}>
+            <Card
+              loading={loading}
+              title="최근 접속 PC"
+              extra={<Badge count={recentDevices.length} color="#3182F6" />}
+              style={{ height: "100%" }}
+              styles={{ body: { padding: "8px 16px" } }}
+            >
+              {recentDevices.length === 0 ? (
+                <Text type="secondary" style={{ fontSize: 13 }}>접속 기록 없음</Text>
+              ) : (
+                <List
+                  dataSource={recentDevices}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: "8px 0", borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+                      <div style={{ width: "100%" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <Text strong style={{ fontSize: 13 }}>{item.device_name}</Text>
+                          <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>{item.program_name}</Tag>
+                        </div>
+                        <Text type="secondary" style={{ fontSize: 11 }}>{formatKST(item.last_seen_at, true)}</Text>
+                      </div>
+                    </List.Item>
+                  )}
+                />
+              )}
+            </Card>
+          </Col>
+
+          {/* 금일 등록 라이선스 */}
+          <Col xs={24} md={8}>
+            <Card
+              loading={loading}
+              title="금일 등록 라이선스"
+              extra={<Badge count={todayLicenses.length} color="#00B448" />}
+              style={{ height: "100%" }}
+              styles={{ body: { padding: "8px 16px" } }}
+            >
+              {todayLicenses.length === 0 ? (
+                <Text type="secondary" style={{ fontSize: 13 }}>오늘 등록된 라이선스 없음</Text>
+              ) : (
+                <List
+                  dataSource={todayLicenses}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: "8px 0", borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+                      <div style={{ width: "100%" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <Text code style={{ fontSize: 11 }}>{item.license_key}</Text>
+                          <Tag color="green" style={{ fontSize: 11, margin: 0 }}>{item.program_name}</Tag>
+                        </div>
+                        <Text type="secondary" style={{ fontSize: 11 }}>{formatKST(item.created_at, true)}</Text>
+                      </div>
+                    </List.Item>
+                  )}
+                />
+              )}
+            </Card>
+          </Col>
+
+          {/* 만료 임박 */}
+          <Col xs={24} md={8}>
+            <Card
+              loading={loading}
+              title="만료 임박 (3일 이내)"
+              extra={<Badge count={expiringLicenses.length} color="#F7A600" />}
+              style={{ height: "100%" }}
+              styles={{ body: { padding: "8px 16px" } }}
+            >
+              {expiringLicenses.length === 0 ? (
+                <Text type="secondary" style={{ fontSize: 13 }}>만료 임박 라이선스 없음</Text>
+              ) : (
+                <List
+                  dataSource={expiringLicenses}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: "8px 0", borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+                      <div style={{ width: "100%" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <Text strong style={{ fontSize: 13 }}>{item.username}</Text>
+                          <Tag color={item.days <= 0 ? "red" : item.days === 1 ? "orange" : "gold"} style={{ fontSize: 11, margin: 0 }}>
+                            {item.days <= 0 ? "오늘 만료" : `D-${item.days}`}
+                          </Tag>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <Text type="secondary" style={{ fontSize: 11 }}>{item.program_name}</Text>
+                          <Text type="secondary" style={{ fontSize: 11 }}>{formatKST(item.expires_at)}</Text>
+                        </div>
+                      </div>
+                    </List.Item>
+                  )}
+                />
+              )}
+            </Card>
+          </Col>
+        </Row>
+      </div>
+
       {/* Program summary */}
       {programs.length > 0 && (
         <div style={{ marginTop: 32 }}>
@@ -130,7 +266,6 @@ export default function DashboardPage() {
                     style={{ cursor: "pointer" }}
                   >
                     <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-                      {/* 텍스트 + 통계 */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <Text strong style={{ fontSize: 15 }}>
                           {p.name}
@@ -143,11 +278,9 @@ export default function DashboardPage() {
                           </div>
                         )}
                         <div style={{ marginTop: 14 }}>
-                          {/* 활성 비율 바 */}
                           <div style={{ height: 4, borderRadius: 99, background: token.colorFillSecondary, marginBottom: 10, overflow: "hidden" }}>
                             <div style={{ height: "100%", borderRadius: 99, background: "#00B448", width: `${activeRatio}%`, transition: "width 0.4s ease" }} />
                           </div>
-                          {/* 인라인 통계 */}
                           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
                             <span style={{ display: "flex", alignItems: "baseline", gap: 3, whiteSpace: "nowrap" }}>
                               <Text strong style={{ fontSize: 15 }}>{licenses.length}</Text>
@@ -168,7 +301,6 @@ export default function DashboardPage() {
                           </div>
                         </div>
                       </div>
-                      {/* 우측 이미지 — 652:488 비율 */}
                       {imgSrc && (
                         <div
                           style={{
