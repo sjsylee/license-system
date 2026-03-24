@@ -3,7 +3,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.client_ip import get_client_ip
 from app.core.config import settings
+from app.core.rate_limit import login_rate_limiter
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -15,6 +17,13 @@ from app.schemas.auth import LoginRequest, TokenResponse
 
 router = APIRouter(prefix="/auth", tags=["인증"])
 
+LOGIN_IP_LIMIT = 20
+LOGIN_IP_WINDOW_SECONDS = 300
+LOGIN_USER_LIMIT = 10
+LOGIN_USER_WINDOW_SECONDS = 600
+LOGIN_PAIR_LIMIT = 8
+LOGIN_PAIR_WINDOW_SECONDS = 600
+
 REFRESH_COOKIE = "refresh_token"
 COOKIE_OPTS = {
     "key": REFRESH_COOKIE,
@@ -24,6 +33,44 @@ COOKIE_OPTS = {
     "max_age": settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     "path": "/auth",
 }
+
+
+def _login_limit_keys(client_ip: str, username: str) -> tuple[str, str, str]:
+    normalized_username = username.strip().lower()
+    return (
+        f"login:ip:{client_ip}",
+        f"login:user:{normalized_username}",
+        f"login:pair:{client_ip}:{normalized_username}",
+    )
+
+
+def _enforce_login_rate_limit(client_ip: str, username: str) -> None:
+    ip_key, user_key, pair_key = _login_limit_keys(client_ip, username)
+    checks = (
+        login_rate_limiter.is_limited(ip_key, LOGIN_IP_LIMIT, LOGIN_IP_WINDOW_SECONDS),
+        login_rate_limiter.is_limited(user_key, LOGIN_USER_LIMIT, LOGIN_USER_WINDOW_SECONDS),
+        login_rate_limiter.is_limited(pair_key, LOGIN_PAIR_LIMIT, LOGIN_PAIR_WINDOW_SECONDS),
+    )
+    limited_retry_after = max((retry_after for limited, retry_after in checks if limited), default=0)
+    if limited_retry_after > 0:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please try again later.",
+            headers={"Retry-After": str(limited_retry_after)},
+        )
+
+
+def _record_login_failure(client_ip: str, username: str) -> None:
+    ip_key, user_key, pair_key = _login_limit_keys(client_ip, username)
+    login_rate_limiter.hit(ip_key, LOGIN_IP_WINDOW_SECONDS)
+    login_rate_limiter.hit(user_key, LOGIN_USER_WINDOW_SECONDS)
+    login_rate_limiter.hit(pair_key, LOGIN_PAIR_WINDOW_SECONDS)
+
+
+def _reset_login_success_state(client_ip: str, username: str) -> None:
+    _, user_key, pair_key = _login_limit_keys(client_ip, username)
+    login_rate_limiter.reset(user_key)
+    login_rate_limiter.reset(pair_key)
 
 
 @router.post(
@@ -38,13 +85,19 @@ COOKIE_OPTS = {
     ),
     response_description="발급된 Access Token",
 )
-def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    client_ip = get_client_ip(request)
+    _enforce_login_rate_limit(client_ip, body.username)
+
     admin = crud_admin.get_by_username(db, body.username)
     if not admin or not verify_password(body.password, admin.hashed_password):
+        _record_login_failure(client_ip, body.username)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     if not admin.is_active:
+        _record_login_failure(client_ip, body.username)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
 
+    _reset_login_success_state(client_ip, body.username)
     raw_token = generate_refresh_token()
     crud_admin.create_refresh_token(db, admin.id, raw_token)
 

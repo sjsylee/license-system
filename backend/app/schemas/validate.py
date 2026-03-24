@@ -16,12 +16,10 @@ class ValidateResponse(BaseModel):
         default=None,
         description=(
             "유효하지 않을 때의 오류 코드. 가능한 값:\n"
-            "- `program_not_found`: 프로그램을 찾을 수 없음\n"
-            "- `license_not_found`: 라이선스 키를 찾을 수 없음\n"
-            "- `program_mismatch`: 라이선스가 해당 프로그램에 속하지 않음\n"
-            "- `license_inactive`: 라이선스가 비활성화됨\n"
-            "- `license_expired`: 라이선스 만료됨\n"
-            "- `device_limit_reached`: 허용 기기 수 초과"
+            "- `invalid_license`: 프로그램명/라이선스 키 조합이 유효하지 않음\n"
+            "- `license_unusable`: 라이선스를 현재 사용할 수 없음\n"
+            "- `device_limit_reached`: 허용 기기 수 초과\n"
+            "- `rate_limited`: 과도한 검증 요청으로 잠시 제한됨"
         ),
     )
     username: str | None = Field(default=None, description="라이선스 소유자 이름")

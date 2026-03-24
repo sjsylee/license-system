@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.security import generate_license_key
@@ -111,13 +112,40 @@ def bulk_import(db: Session, program_id: int, max_devices: int, items: list, met
                 success=True,
             ))
             imported += 1
-        except Exception as e:
+        except IntegrityError:
             db.rollback()
             results.append(BulkImportItemResult(
                 username=item.username,
                 license_key=item.license_key,
                 success=False,
-                error=str(e),
+                error="데이터 제약 조건을 만족하지 않아 가져오지 못했습니다.",
+            ))
+            skipped += 1
+        except (ValueError, TypeError):
+            db.rollback()
+            results.append(BulkImportItemResult(
+                username=item.username,
+                license_key=item.license_key,
+                success=False,
+                error="입력값 형식이 올바르지 않아 가져오지 못했습니다.",
+            ))
+            skipped += 1
+        except SQLAlchemyError:
+            db.rollback()
+            results.append(BulkImportItemResult(
+                username=item.username,
+                license_key=item.license_key,
+                success=False,
+                error="데이터 저장 중 오류가 발생했습니다.",
+            ))
+            skipped += 1
+        except Exception:
+            db.rollback()
+            results.append(BulkImportItemResult(
+                username=item.username,
+                license_key=item.license_key,
+                success=False,
+                error="가져오기 중 예상하지 못한 오류가 발생했습니다.",
             ))
             skipped += 1
 
