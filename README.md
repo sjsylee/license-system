@@ -166,12 +166,10 @@ It always returns **HTTP 200** to prevent desktop app crashes, communicating err
 **Error codes:**
 | Code | Reason |
 |------|--------|
-| `program_not_found` | Unknown program name |
-| `license_not_found` | Invalid license key |
-| `program_mismatch` | License belongs to a different program |
-| `license_inactive` | License has been deactivated by admin |
-| `license_expired` | License past its expiry date |
+| `invalid_license` | Program name / license key combination is not valid |
+| `license_unusable` | License exists but cannot be used right now |
 | `device_limit_reached` | All allowed device slots are occupied |
+| `rate_limited` | Validation requests are temporarily throttled |
 
 ---
 
@@ -254,6 +252,46 @@ See [`.env.example`](.env.example) for the full list of required environment var
 | Docker CI build fails | Dependency or syntax error in Dockerfile | Run `docker build ./backend` locally to reproduce |
 
 > 📄 For detailed developer workflows including DB schema migration, see [DEV.md](DEV.md).
+
+---
+
+## 🔐 Security Hardening / 보안 강화
+
+최근 운영 중인 서비스의 공격 표면을 줄이기 위해, 인증/검증/에러 노출 영역을 중심으로 몇 가지 보안 하드닝을 적용했습니다.
+
+### 1. Admin login brute-force 대응
+
+- `POST /auth/login`에 경량 in-memory rate limit을 추가했습니다.
+- 현재는 단일 VM 환경을 고려해 Redis 없이 동작하며, 다음 세 가지 기준을 함께 봅니다.
+  - IP 기준: `20회 / 5분`
+  - username 기준: `10회 / 10분`
+  - IP+username 기준: `8회 / 10분`
+- 목적은 무차별 대입(brute force)과 credential stuffing의 성공 확률을 낮추는 것입니다.
+
+### 2. Public validate abuse control
+
+- `POST /v1/validate`는 Electron 앱 시작 시 호출되는 공개 엔드포인트이므로, 인증 없이 접근 가능하다는 점이 가장 큰 abuse surface였습니다.
+- 여기에 다음 기준의 abuse control을 추가했습니다.
+  - IP 기준: `120회 / 1분`
+  - license key 기준: `30회 / 1분`
+  - IP+license key 기준: `20회 / 1분`
+- 정상 사용자를 불필요하게 막지 않도록 **성공 요청은 예산을 소모하지 않고**, 유효하지 않은 검증 요청만 카운트합니다.
+
+### 3. Validate error code 축소
+
+- 원래 validate API는 `program_not_found`, `license_not_found`, `program_mismatch`, `license_inactive`, `license_expired`처럼 내부 상태를 비교적 자세히 드러냈습니다.
+- 이 구조는 라이선스 존재 여부나 프로그램 매칭 상태를 추측하는 데 도움을 줄 수 있어, 외부 공개 error code를 다음처럼 축소했습니다.
+  - `invalid_license`
+  - `license_unusable`
+  - `device_limit_reached`
+  - `rate_limited`
+- 응답 스키마(`valid`, `error_code`, `username`, `expires_at`, `meta`)는 유지하면서, 상태 노출만 줄이는 방향을 택했습니다.
+
+### 4. Bulk import 내부 예외 메시지 노출 제거
+
+- 기존 `bulk_import()`는 예외 발생 시 `error=str(e)`를 그대로 응답에 포함하고 있었습니다.
+- 이 방식은 DB 제약조건명, 내부 컬럼 정보, ORM 예외 메시지 같은 구현 세부사항이 어드민 UI까지 그대로 노출될 수 있다는 문제가 있었습니다.
+- 현재는 예외 유형별로 사용자에게 안전한 메시지만 반환하고, 내부 예외 문자열은 직접 노출하지 않도록 수정했습니다.
 
 ---
 
