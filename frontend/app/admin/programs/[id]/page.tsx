@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import EmptyLottie from "@/components/EmptyLottie";
 import { licenseApi, programApi, type License, type Program } from "@/lib/api";
-import { formatKST } from "@/lib/utils";
+import { daysUntil, formatKST, parseBackendDate } from "@/lib/utils";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 
@@ -35,27 +35,35 @@ const noWrap = { style: { whiteSpace: "nowrap" as const } };
 type FilterKey = "all" | "active" | "inactive" | "expired";
 
 function isExpired(license: License) {
-  return !!license.expires_at && dayjs(license.expires_at).isBefore(dayjs());
+  if (!license.expires_at) return false;
+  const expiresAt = parseBackendDate(license.expires_at);
+  if (!expiresAt) return false;
+  return dayjs(expiresAt).isBefore(dayjs());
 }
 
 function RemainingDays({ expiresAt }: { expiresAt: string | null }) {
   if (!expiresAt) return <Tag color="blue" style={{ margin: 0 }}>무기한</Tag>;
 
-  const diff = dayjs(expiresAt).diff(dayjs(), "day");
-  if (diff < 0) {
+  const expiresDate = parseBackendDate(expiresAt);
+  if (!expiresDate) {
+    return <Text type="secondary" style={{ fontSize: 12, whiteSpace: "nowrap" }}>-</Text>;
+  }
+
+  const diff = daysUntil(expiresAt);
+  if (dayjs(expiresDate).isBefore(dayjs())) {
     return <Text type="danger" style={{ fontSize: 12, whiteSpace: "nowrap" }}>만료됨</Text>;
   }
   if (diff === 0) {
     return (
       <Space size={4} orientation="vertical" style={{ lineHeight: 1.3 }}>
-        <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>{dayjs(expiresAt).format("YY.MM.DD")}</Text>
+        <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>{formatKST(expiresAt)}</Text>
         <Text type="danger" style={{ fontSize: 11, whiteSpace: "nowrap" }}>오늘 만료</Text>
       </Space>
     );
   }
   return (
     <Space size={4} orientation="vertical" style={{ lineHeight: 1.3 }}>
-      <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>{dayjs(expiresAt).format("YY.MM.DD")}</Text>
+      <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>{formatKST(expiresAt)}</Text>
       <Text type="secondary" style={{ fontSize: 11, whiteSpace: "nowrap" }}>
         {diff <= 30
           ? <span style={{ color: diff <= 7 ? "#ff4d4f" : "#fa8c16" }}>D-{diff}</span>
@@ -130,13 +138,17 @@ export default function ProgramDetailPage() {
     }
     return [...base].sort((a, b) => {
       if (sortKey === "newest") {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        const bTime = parseBackendDate(b.created_at)?.getTime() ?? 0;
+        const aTime = parseBackendDate(a.created_at)?.getTime() ?? 0;
+        return bTime - aTime;
       }
       // expiry_asc: 무기한은 맨 뒤, 만료일 짧은 순
       if (!a.expires_at && !b.expires_at) return 0;
       if (!a.expires_at) return 1;
       if (!b.expires_at) return -1;
-      return dayjs(a.expires_at).diff(dayjs(b.expires_at));
+      const aTime = parseBackendDate(a.expires_at)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const bTime = parseBackendDate(b.expires_at)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
     });
   }, [licenses, filterKey, searchQuery, sortKey]);
 
