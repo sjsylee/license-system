@@ -2,10 +2,10 @@
 
 import { AppstoreOutlined, CheckCircleOutlined, KeyOutlined, LaptopOutlined } from "@ant-design/icons";
 import Image from "next/image";
-import { Badge, Card, Col, List, Row, Tag, Typography, theme } from "antd";
+import { Badge, Card, Col, Row, Tag, Typography, theme } from "antd";
 import { useEffect, useState } from "react";
 import { licenseApi, programApi, type License, type Program } from "@/lib/api";
-import { daysUntil, formatKST, isToday } from "@/lib/utils";
+import { daysUntil, formatKST, isToday, parseBackendDate } from "@/lib/utils";
 
 const { Title, Text } = Typography;
 
@@ -47,12 +47,20 @@ export default function DashboardPage() {
       }))
     )
     .filter((d) => d.last_seen_at)
-    .sort((a, b) => new Date(b.last_seen_at).getTime() - new Date(a.last_seen_at).getTime())
+    .sort((a, b) => {
+      const bTime = parseBackendDate(b.last_seen_at)?.getTime() ?? 0;
+      const aTime = parseBackendDate(a.last_seen_at)?.getTime() ?? 0;
+      return bTime - aTime;
+    })
     .slice(0, 5);
 
   const todayLicenses = allLicenses
     .filter((l) => isToday(l.created_at))
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .sort((a, b) => {
+      const bTime = parseBackendDate(b.created_at)?.getTime() ?? 0;
+      const aTime = parseBackendDate(a.created_at)?.getTime() ?? 0;
+      return bTime - aTime;
+    })
     .slice(0, 5)
     .map((l) => ({
       license_key: l.license_key,
@@ -158,10 +166,18 @@ export default function DashboardPage() {
               {recentDevices.length === 0 ? (
                 <Text type="secondary" style={{ fontSize: 13 }}>접속 기록 없음</Text>
               ) : (
-                <List
-                  dataSource={recentDevices}
-                  renderItem={(item) => (
-                    <List.Item style={{ padding: "8px 0", borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+                <div>
+                  {recentDevices.map((item, index) => (
+                    <div
+                      key={`${item.device_name}-${item.last_seen_at}-${index}`}
+                      style={{
+                        padding: "8px 0",
+                        borderBottom:
+                          index === recentDevices.length - 1
+                            ? "none"
+                            : `1px solid ${token.colorBorderSecondary}`,
+                      }}
+                    >
                       <div style={{ width: "100%" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <Text strong style={{ fontSize: 13 }}>{item.device_name}</Text>
@@ -169,9 +185,9 @@ export default function DashboardPage() {
                         </div>
                         <Text type="secondary" style={{ fontSize: 11 }}>{formatKST(item.last_seen_at, true)}</Text>
                       </div>
-                    </List.Item>
-                  )}
-                />
+                    </div>
+                  ))}
+                </div>
               )}
             </Card>
           </Col>
@@ -188,10 +204,18 @@ export default function DashboardPage() {
               {todayLicenses.length === 0 ? (
                 <Text type="secondary" style={{ fontSize: 13 }}>오늘 등록된 라이선스 없음</Text>
               ) : (
-                <List
-                  dataSource={todayLicenses}
-                  renderItem={(item) => (
-                    <List.Item style={{ padding: "8px 0", borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+                <div>
+                  {todayLicenses.map((item, index) => (
+                    <div
+                      key={`${item.license_key}-${item.created_at}-${index}`}
+                      style={{
+                        padding: "8px 0",
+                        borderBottom:
+                          index === todayLicenses.length - 1
+                            ? "none"
+                            : `1px solid ${token.colorBorderSecondary}`,
+                      }}
+                    >
                       <div style={{ width: "100%" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <Text code style={{ fontSize: 11 }}>{item.license_key}</Text>
@@ -199,9 +223,9 @@ export default function DashboardPage() {
                         </div>
                         <Text type="secondary" style={{ fontSize: 11 }}>{formatKST(item.created_at, true)}</Text>
                       </div>
-                    </List.Item>
-                  )}
-                />
+                    </div>
+                  ))}
+                </div>
               )}
             </Card>
           </Col>
@@ -218,10 +242,18 @@ export default function DashboardPage() {
               {expiringLicenses.length === 0 ? (
                 <Text type="secondary" style={{ fontSize: 13 }}>만료 임박 라이선스 없음</Text>
               ) : (
-                <List
-                  dataSource={expiringLicenses}
-                  renderItem={(item) => (
-                    <List.Item style={{ padding: "8px 0", borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+                <div>
+                  {expiringLicenses.map((item, index) => (
+                    <div
+                      key={`${item.username}-${item.expires_at}-${index}`}
+                      style={{
+                        padding: "8px 0",
+                        borderBottom:
+                          index === expiringLicenses.length - 1
+                            ? "none"
+                            : `1px solid ${token.colorBorderSecondary}`,
+                      }}
+                    >
                       <div style={{ width: "100%" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <Text strong style={{ fontSize: 13 }}>{item.username}</Text>
@@ -234,9 +266,9 @@ export default function DashboardPage() {
                           <Text type="secondary" style={{ fontSize: 11 }}>{formatKST(item.expires_at)}</Text>
                         </div>
                       </div>
-                    </List.Item>
-                  )}
-                />
+                    </div>
+                  ))}
+                </div>
               )}
             </Card>
           </Col>

@@ -5,13 +5,13 @@ import {
   Alert, App, Button, Card, Col, Divider, Form, Input, InputNumber,
   Row, Select, Space, Table, Tag, Typography, theme,
 } from "antd";
-import dayjs from "dayjs";
 import { useEffect, useState } from "react";
 import {
   licenseApi, programApi,
   type BulkImportItemResult, type BulkImportResponse,
   type BulkLicenseItem, type MetaSchema, type Program,
 } from "@/lib/api";
+import { formatKST } from "@/lib/utils";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -136,7 +136,7 @@ export default function MigratePage() {
       key: "expires_at",
       render: (v: string | null) =>
         v ? (
-          <Text style={{ fontSize: 12 }}>{dayjs(v).format("YYYY.MM.DD")}</Text>
+          <Text style={{ fontSize: 12 }}>{formatKST(v)}</Text>
         ) : (
           <Tag color="blue">무기한</Tag>
         ),
