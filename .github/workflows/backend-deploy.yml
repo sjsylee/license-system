@@ -7,6 +7,8 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      - "nginx/**"
+      - "docker-compose.yml"
       - ".github/workflows/backend-deploy.yml"
   workflow_dispatch:          # 수동 실행 버튼 (긴급 재배포 등)
 

@@ -293,6 +293,17 @@ See [`.env.example`](.env.example) for the full list of required environment var
 - 이 방식은 DB 제약조건명, 내부 컬럼 정보, ORM 예외 메시지 같은 구현 세부사항이 어드민 UI까지 그대로 노출될 수 있다는 문제가 있었습니다.
 - 현재는 예외 유형별로 사용자에게 안전한 메시지만 반환하고, 내부 예외 문자열은 직접 노출하지 않도록 수정했습니다.
 
+### 5. Nginx 프록시 레이어 하드닝
+
+- 앱 레벨 방어만으로는 부족할 수 있어, `nginx/nginx.conf`에도 프록시 레벨 보안 설정을 추가했습니다.
+- 주요 변경 사항은 다음과 같습니다.
+  - `/auth/login`, `/v1/validate`에 대한 IP 기준 rate limit
+  - `client_max_body_size`, `client_body_timeout`, `client_header_timeout` 제한
+  - `keepalive_timeout`, `proxy_*_timeout` 축소
+  - `server_tokens off`, `Referrer-Policy`, `Content-Security-Policy`, `X-Content-Type-Options` 적용
+  - Cloudflare Tunnel 환경에서 실제 클라이언트 IP를 복원하되, `set_real_ip_from`을 private 대역 중심으로 제한
+- 또한 `nginx/**`와 `docker-compose.yml` 변경도 배포 워크플로우가 감지하도록 `backend-deploy.yml`의 path filter를 함께 보강했습니다.
+
 ---
 
 ## 💡 개발 노트 / 설계 고찰
