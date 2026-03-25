@@ -33,8 +33,9 @@ export default function DashboardPage() {
     load();
   }, []);
 
-  const activeLicenses = allLicenses.filter((l) => l.is_active);
-  const totalDevices = allLicenses.reduce((sum, l) => sum + l.devices.length, 0);
+  const dashboardLicenses = allLicenses.filter((l) => l.username !== "Admin");
+  const activeLicenses = dashboardLicenses.filter((l) => l.is_active);
+  const totalDevices = dashboardLicenses.reduce((sum, l) => sum + l.devices.length, 0);
 
   const programMap = Object.fromEntries(programs.map((p) => [p.id, p.name]));
 
@@ -88,7 +89,7 @@ export default function DashboardPage() {
     },
     {
       title: "전체 라이선스",
-      value: allLicenses.length,
+      value: dashboardLicenses.length,
       icon: <KeyOutlined style={{ color: "#00B448" }} />,
       color: "rgba(0,180,72,0.08)",
     },
