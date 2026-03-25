@@ -25,9 +25,10 @@ const { Title, Text } = Typography;
 const GITHUB_OWNER = process.env.NEXT_PUBLIC_GITHUB_OWNER ?? "";
 
 const QUICK_DATES = [
-  { label: "1개월", months: 1 },
-  { label: "3개월", months: 3 },
-  { label: "6개월", months: 6 },
+  { label: "1주일", amount: 7, unit: "day" as const },
+  { label: "1개월", amount: 1, unit: "month" as const },
+  { label: "3개월", amount: 3, unit: "month" as const },
+  { label: "6개월", amount: 6, unit: "month" as const },
 ];
 
 const noWrap = { style: { whiteSpace: "nowrap" as const } };
@@ -272,8 +273,8 @@ export default function ProgramDetailPage() {
     message.success("복사되었습니다.");
   }
 
-  function setQuickDate(months: number) {
-    form.setFieldValue("expires_at", dayjs().add(months, "month"));
+  function setQuickDate(amount: number, unit: "day" | "month") {
+    form.setFieldValue("expires_at", dayjs().add(amount, unit));
   }
 
   const columns = [
@@ -696,11 +697,11 @@ export default function ProgramDetailPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span>만료일</span>
                 <div style={{ display: "flex", gap: 6 }}>
-                  {QUICK_DATES.map(({ label, months }) => (
+                  {QUICK_DATES.map(({ label, amount, unit }) => (
                     <button
                       key={label}
                       type="button"
-                      onClick={() => setQuickDate(months)}
+                      onClick={() => setQuickDate(amount, unit)}
                       style={{
                         padding: "1px 8px",
                         fontSize: 11,
@@ -806,7 +807,7 @@ export default function ProgramDetailPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span>새 만료일</span>
                 <div style={{ display: "flex", gap: 6 }}>
-                  {QUICK_DATES.map(({ label, months }) => (
+                  {QUICK_DATES.map(({ label, amount, unit }) => (
                     <button
                       key={label}
                       type="button"
@@ -814,7 +815,7 @@ export default function ProgramDetailPage() {
                           const base = extendTarget?.expires_at && dayjs(extendTarget.expires_at).isAfter(dayjs())
                             ? dayjs(extendTarget.expires_at)
                             : dayjs();
-                          extendForm.setFieldValue("extends_at", base.add(months, "month"));
+                          extendForm.setFieldValue("extends_at", base.add(amount, unit));
                         }}
                       style={{
                         padding: "1px 8px",
