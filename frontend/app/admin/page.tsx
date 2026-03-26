@@ -45,6 +45,7 @@ export default function DashboardPage() {
         device_name: d.device_name || d.hwid.slice(0, 8),
         program_name: programMap[l.program_id] || "",
         last_seen_at: d.last_seen_at,
+        username: l.username,
       }))
     )
     .filter((d) => d.last_seen_at)
@@ -67,10 +68,11 @@ export default function DashboardPage() {
       license_key: l.license_key,
       program_name: programMap[l.program_id] || "",
       created_at: l.created_at,
+      username: l.username,
     }));
 
   const expiringLicenses = allLicenses
-    .filter((l) => l.is_active && l.expires_at && daysUntil(l.expires_at) <= 3)
+    .filter((l) => l.is_active && l.expires_at && daysUntil(l.expires_at) >= 0 && daysUntil(l.expires_at) <= 3)
     .map((l) => ({
       username: l.username,
       program_name: programMap[l.program_id] || "",
@@ -121,7 +123,7 @@ export default function DashboardPage() {
       <Row gutter={[16, 16]}>
         {stats.map((s) => (
           <Col xs={12} sm={12} md={6} key={s.title}>
-            <Card loading={loading} style={{ height: "100%" }}>
+            <Card loading={loading} className="glass-card" style={{ height: "100%" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <div
@@ -161,6 +163,7 @@ export default function DashboardPage() {
               loading={loading}
               title="최근 접속 PC"
               extra={<Badge count={recentDevices.length} color="#3182F6" />}
+              className="glass-card"
               style={{ height: "100%" }}
               styles={{ body: { padding: "8px 16px" } }}
             >
@@ -184,7 +187,10 @@ export default function DashboardPage() {
                           <Text strong style={{ fontSize: 13 }}>{item.device_name}</Text>
                           <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>{item.program_name}</Tag>
                         </div>
-                        <Text type="secondary" style={{ fontSize: 11 }}>{formatKST(item.last_seen_at, true)}</Text>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <Text type="secondary" style={{ fontSize: 11 }}>{item.username}</Text>
+                          <Text type="secondary" style={{ fontSize: 11 }}>{formatKST(item.last_seen_at, true)}</Text>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -199,6 +205,7 @@ export default function DashboardPage() {
               loading={loading}
               title="금일 등록 라이선스"
               extra={<Badge count={todayLicenses.length} color="#00B448" />}
+              className="glass-card"
               style={{ height: "100%" }}
               styles={{ body: { padding: "8px 16px" } }}
             >
@@ -219,10 +226,13 @@ export default function DashboardPage() {
                     >
                       <div style={{ width: "100%" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <Text code style={{ fontSize: 11 }}>{item.license_key}</Text>
+                          <Text strong style={{ fontSize: 13 }}>{item.username}</Text>
                           <Tag color="green" style={{ fontSize: 11, margin: 0 }}>{item.program_name}</Tag>
                         </div>
-                        <Text type="secondary" style={{ fontSize: 11 }}>{formatKST(item.created_at, true)}</Text>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <Text code style={{ fontSize: 11 }}>{item.license_key}</Text>
+                          <Text type="secondary" style={{ fontSize: 11 }}>{formatKST(item.created_at, true)}</Text>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -237,6 +247,7 @@ export default function DashboardPage() {
               loading={loading}
               title="만료 임박 (3일 이내)"
               extra={<Badge count={expiringLicenses.length} color="#F7A600" />}
+              className="glass-card"
               style={{ height: "100%" }}
               styles={{ body: { padding: "8px 16px" } }}
             >
@@ -296,6 +307,7 @@ export default function DashboardPage() {
                     onClick={() =>
                       (window.location.href = `/admin/programs/${p.id}`)
                     }
+                    className="glass-card"
                     style={{ cursor: "pointer" }}
                   >
                     <div style={{ display: "flex", gap: 16, alignItems: "center" }}>

@@ -27,10 +27,60 @@ body {
   padding: 0;
 }
 
+html {
+  background: var(--admin-bg);
+}
+
 body {
   font-family: var(--font-pretendard);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Admin background gradient */
+:root {
+  --admin-bg: linear-gradient(135deg, #EEF4FF 0%, #F3EEFF 50%, #FFF0FB 100%);
+}
+.dark {
+  --admin-bg: linear-gradient(135deg, #0B0F1A 0%, #0E0B1E 50%, #110B18 100%);
+}
+
+/* Glass card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.65) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-color: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06) !important;
+}
+.dark .glass-card {
+  background: rgba(28, 28, 30, 0.55) !important;
+  border-color: rgba(255, 255, 255, 0.07) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Glass tooltip */
+.ant-tooltip .ant-tooltip-inner {
+  background: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  color: #191F28 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+}
+.ant-tooltip .ant-tooltip-arrow::before {
+  background: rgba(255, 255, 255, 0.75) !important;
+}
+.dark .ant-tooltip .ant-tooltip-inner {
+  background: rgba(22, 22, 28, 0.8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #F2F4F6 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
+}
+.dark .ant-tooltip .ant-tooltip-arrow::before {
+  background: rgba(22, 22, 28, 0.8) !important;
 }
 
 /* Ant Design 스크롤바 커스텀 */
