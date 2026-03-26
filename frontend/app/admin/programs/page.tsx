@@ -196,7 +196,7 @@ export default function ProgramsPage() {
           position: "sticky",
           top: 56,
           zIndex: 10,
-          background: token.colorBgLayout,
+          background: "var(--admin-bg)",
           paddingBottom: 16,
           marginBottom: 4,
         }}
@@ -211,7 +211,7 @@ export default function ProgramsPage() {
       </div>
 
       {!loading && filteredPrograms.length === 0 ? (
-        <Card>
+        <Card className="glass-card">
           <EmptyLottie
             description={
               searchQuery ? "검색 결과가 없습니다." : "등록된 프로그램이 없습니다."
@@ -230,6 +230,7 @@ export default function ProgramsPage() {
               <Col xs={24} md={12} xl={8} key={p.id}>
                 <Card
                   loading={loading}
+                  className="glass-card"
                   style={{ height: "100%", display: "flex", flexDirection: "column" }}
                   styles={{ body: { flex: 1, display: "flex", flexDirection: "column" }, actions: { padding: "10px 0" } }}
                   cover={

@@ -3,6 +3,7 @@
 import { Alert, Button, Card, Form, Input, Typography, theme } from "antd";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useTheme } from "next-themes";
 import { authApi } from "@/lib/api";
 import { setAccessToken } from "@/lib/auth";
 
@@ -11,6 +12,8 @@ const { Title, Text } = Typography;
 export default function LoginPage() {
   const router = useRouter();
   const { token } = theme.useToken();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,7 +34,7 @@ export default function LoginPage() {
   return (
     <div
       className="flex items-center justify-center p-4"
-      style={{ background: token.colorBgLayout, position: "fixed", inset: 0, overflow: "hidden" }}
+      style={{ background: "var(--admin-bg)", position: "fixed", inset: 0, overflow: "hidden" }}
     >
       <style>{`
         @keyframes orb1 {
@@ -55,7 +58,9 @@ export default function LoginPage() {
         position: "absolute", top: "-10%", left: "-5%",
         width: 480, height: 480,
         borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(49,130,246,0.28) 0%, transparent 70%)",
+        background: isDark
+          ? "radial-gradient(circle, rgba(49,130,246,0.45) 0%, transparent 70%)"
+          : "radial-gradient(circle, rgba(49,130,246,0.28) 0%, transparent 70%)",
         filter: "blur(40px)",
         animation: "orb1 14s ease-in-out infinite",
         willChange: "transform",
@@ -67,7 +72,9 @@ export default function LoginPage() {
         position: "absolute", bottom: "-15%", right: "-8%",
         width: 520, height: 520,
         borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(18,72,199,0.22) 0%, transparent 70%)",
+        background: isDark
+          ? "radial-gradient(circle, rgba(120,60,220,0.38) 0%, transparent 70%)"
+          : "radial-gradient(circle, rgba(18,72,199,0.22) 0%, transparent 70%)",
         filter: "blur(50px)",
         animation: "orb2 18s ease-in-out infinite",
         willChange: "transform",
@@ -79,7 +86,9 @@ export default function LoginPage() {
         position: "absolute", top: "20%", right: "10%",
         width: 300, height: 300,
         borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(99,160,255,0.18) 0%, transparent 70%)",
+        background: isDark
+          ? "radial-gradient(circle, rgba(165,100,255,0.28) 0%, transparent 70%)"
+          : "radial-gradient(circle, rgba(99,160,255,0.18) 0%, transparent 70%)",
         filter: "blur(35px)",
         animation: "orb3 11s ease-in-out infinite",
         willChange: "transform",
@@ -122,7 +131,7 @@ export default function LoginPage() {
           </Text>
         </div>
 
-        <Card>
+        <Card className="glass-card">
           {error && (
             <Alert
               title={error}

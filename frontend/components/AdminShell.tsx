@@ -354,7 +354,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   );
 
   return (
-    <Layout style={{ minHeight: "100vh", background: token.colorBgLayout }}>
+    <Layout style={{ minHeight: "100vh", background: "var(--admin-bg)" }}>
       {/* Desktop Sider */}
       {!isMobile && (
         <Sider
@@ -362,7 +362,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           collapsedWidth={72}
           width={240}
           style={{
-            background: token.colorBgContainer,
+            background: "transparent",
             borderRight: `1px solid ${token.colorBorderSecondary}`,
             position: "fixed",
             left: 0,
@@ -382,7 +382,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           placement="left"
-          styles={{ body: { padding: 0 }, header: { display: "none" }, wrapper: { width: 260 } }}
+          styles={{ body: { padding: 0 }, header: { display: "none" }, wrapper: { width: 260 }, section: { background: "var(--admin-bg)" } }}
         >
           {sidebarContent}
         </Drawer>
@@ -393,13 +393,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         style={{
           marginLeft: isMobile ? 0 : siderCollapsed ? 72 : 240,
           transition: "margin-left 0.2s",
-          background: token.colorBgLayout,
+          background: "transparent",
         }}
       >
         {/* Header */}
         <Header
           style={{
-            background: token.colorBgContainer,
+            background: "transparent",
             borderBottom: `1px solid ${token.colorBorderSecondary}`,
             padding: "0 20px",
             display: "flex",

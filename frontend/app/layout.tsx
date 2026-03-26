@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { ThemeProvider } from "next-themes";
 import AntdProvider from "@/components/AntdProvider";
 import "./globals.css";
@@ -6,6 +6,16 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "LicenseOS",
   description: "라이선스 발급 및 관리 어드민",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#EEF4FF" },
+    { media: "(prefers-color-scheme: dark)", color: "#0B0F1A" },
+  ],
 };
 
 export default function RootLayout({
