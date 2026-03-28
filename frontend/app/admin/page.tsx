@@ -2,6 +2,7 @@
 
 import { AppstoreOutlined, CheckCircleOutlined, KeyOutlined, LaptopOutlined } from "@ant-design/icons";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { Badge, Card, Col, Row, Tag, Typography, theme } from "antd";
 import { useEffect, useState } from "react";
 import { licenseApi, programApi, type License, type Program } from "@/lib/api";
@@ -12,6 +13,7 @@ const { Title, Text } = Typography;
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { token } = theme.useToken();
   const [programs, setPrograms] = useState<Program[]>([]);
   const [allLicenses, setAllLicenses] = useState<License[]>([]);
@@ -100,12 +102,14 @@ export default function DashboardPage() {
       value: activeLicenses.length,
       icon: <CheckCircleOutlined style={{ color: "#3182F6" }} />,
       color: "rgba(49,130,246,0.08)",
+      href: "/admin/active-licenses",
     },
     {
       title: "등록 기기 수",
       value: totalDevices,
       icon: <LaptopOutlined style={{ color: "#F7A600" }} />,
       color: "rgba(247,166,0,0.08)",
+      href: "/admin/registered-devices",
     },
   ];
 
@@ -123,7 +127,13 @@ export default function DashboardPage() {
       <Row gutter={[16, 16]}>
         {stats.map((s) => (
           <Col xs={12} sm={12} md={6} key={s.title}>
-            <Card loading={loading} className="glass-card" style={{ height: "100%" }}>
+            <Card
+              loading={loading}
+              className="glass-card"
+              hoverable={Boolean(s.href)}
+              onClick={s.href ? () => router.push(s.href) : undefined}
+              style={{ height: "100%", cursor: s.href ? "pointer" : "default" }}
+            >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <div
