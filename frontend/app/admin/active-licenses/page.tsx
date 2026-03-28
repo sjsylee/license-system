@@ -47,6 +47,7 @@ export default function ActiveLicensesPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("newest");
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -63,6 +64,13 @@ export default function ActiveLicensesPage() {
 
     void load();
   }, [message]);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const filteredLicenses = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -126,6 +134,52 @@ export default function ActiveLicensesPage() {
     },
   ];
 
+  const mobileColumns: TableProps<DashboardLicense>["columns"] = [
+    {
+      key: "info",
+      render: (_value: unknown, license: DashboardLicense) => (
+        <div style={{ padding: "4px 0" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 12,
+              marginBottom: 6,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <Text strong style={{ fontSize: 14, display: "block" }}>{license.username}</Text>
+              <Tag color="blue" style={{ margin: "4px 0 0" }}>{license.programName}</Tag>
+            </div>
+            <Text type="secondary" style={{ fontSize: 11, whiteSpace: "nowrap" }}>
+              {formatKST(license.created_at, true)}
+            </Text>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <Text code style={{ fontSize: 11 }} ellipsis={{ tooltip: license.license_key }}>
+              {license.license_key}
+            </Text>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            {renderLicenseExpiry(license)}
+            <Text type="secondary" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+              {license.devices.length}/{license.max_devices}기기
+            </Text>
+          </div>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
@@ -141,7 +195,7 @@ export default function ActiveLicensesPage() {
           활성 라이선스
         </Title>
         <Text type="secondary" style={{ fontSize: 13 }}>
-          대시보드의 활성 라이선스 카드와 동일하게, 관리자 계정을 제외하고 활성화된 라이선스만 모아봅니다.
+          현재 활성화된 라이선스를 확인하세요.
         </Text>
       </div>
 
@@ -171,11 +225,12 @@ export default function ActiveLicensesPage() {
         ) : (
           <Table
             dataSource={filteredLicenses}
-            columns={columns}
+            columns={isMobile ? mobileColumns : columns}
             rowKey="id"
             loading={loading}
             pagination={{ pageSize: 10, showSizeChanger: false }}
-            scroll={{ x: 880 }}
+            scroll={isMobile ? undefined : { x: 880 }}
+            showHeader={!isMobile}
           />
         )}
       </Card>
