@@ -29,6 +29,7 @@ export default function RegisteredDevicesPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("newest");
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -45,6 +46,13 @@ export default function RegisteredDevicesPage() {
 
     void load();
   }, [message]);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const filteredDevices = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -111,6 +119,44 @@ export default function RegisteredDevicesPage() {
     },
   ];
 
+  const mobileColumns: TableProps<DashboardDevice>["columns"] = [
+    {
+      key: "info",
+      render: (_value: unknown, device: DashboardDevice) => (
+        <div style={{ padding: "4px 0" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 12,
+              marginBottom: 6,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <Text strong style={{ fontSize: 14, display: "block" }}>{device.username}</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>{device.programName}</Text>
+            </div>
+            <Text type="secondary" style={{ fontSize: 11, whiteSpace: "nowrap" }}>
+              {formatKST(device.activated_at, true)}
+            </Text>
+          </div>
+          <div style={{ marginBottom: 6 }}>
+            <Text strong ellipsis={{ tooltip: getDeviceLabel(device) }} style={{ display: "block", fontSize: 13 }}>
+              {getDeviceLabel(device)}
+            </Text>
+            <Text code style={{ fontSize: 11 }} ellipsis={{ tooltip: device.hwid }}>
+              {device.hwid}
+            </Text>
+          </div>
+          <Text type="secondary" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+            마지막 접속 {formatKST(device.last_seen_at, true)}
+          </Text>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
@@ -126,7 +172,7 @@ export default function RegisteredDevicesPage() {
           등록 기기 수
         </Title>
         <Text type="secondary" style={{ fontSize: 13 }}>
-          대시보드 카드와 동일하게, 관리자 계정을 제외한 라이선스에 연결된 모든 기기를 납작한 행으로 보여줍니다.
+          등록된 기기 목록을 확인하세요.
         </Text>
       </div>
 
@@ -156,11 +202,12 @@ export default function RegisteredDevicesPage() {
         ) : (
           <Table
             dataSource={filteredDevices}
-            columns={columns}
+            columns={isMobile ? mobileColumns : columns}
             rowKey="key"
             loading={loading}
             pagination={{ pageSize: 10, showSizeChanger: false }}
-            scroll={{ x: 980 }}
+            scroll={isMobile ? undefined : { x: 980 }}
+            showHeader={!isMobile}
           />
         )}
       </Card>
