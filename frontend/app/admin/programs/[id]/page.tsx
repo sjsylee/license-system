@@ -10,7 +10,7 @@ import {
   Modal, Popconfirm, Row, Select, Space, Switch, Table, Tag,
   Tooltip, Typography, theme,
 } from "antd";
-import dayjs from "dayjs";
+import dayjs, { type Dayjs } from "dayjs";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
@@ -34,6 +34,10 @@ const QUICK_DATES = [
 const noWrap = { style: { whiteSpace: "nowrap" as const } };
 
 type FilterKey = "all" | "active" | "inactive" | "expired";
+type QuickDateUnit = (typeof QUICK_DATES)[number]["unit"];
+type ExtendFormValues = {
+  extends_at: Dayjs | null;
+};
 
 function isExpired(license: License) {
   if (!license.expires_at) return false;
@@ -90,13 +94,14 @@ export default function ProgramDetailPage() {
   const [filterKey, setFilterKey] = useState<FilterKey>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [extendTarget, setExtendTarget] = useState<License | null>(null);
+  const [extendInitialBase, setExtendInitialBase] = useState<Dayjs | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [editingMaxDevices, setEditingMaxDevices] = useState<number | null>(null);
   const [contactTarget, setContactTarget] = useState<License | null>(null);
   const [sortKey, setSortKey] = useState<"newest" | "expiry_asc">("newest");
   const [metaTarget, setMetaTarget] = useState<License | null>(null);
   const [form] = Form.useForm();
-  const [extendForm] = Form.useForm();
+  const [extendForm] = Form.useForm<ExtendFormValues>();
   const [contactForm] = Form.useForm();
 
   async function load() {
@@ -216,7 +221,7 @@ export default function ProgramDetailPage() {
     }
   }
 
-  async function handleExtend(values: any) {
+  async function handleExtend(values: ExtendFormValues) {
     if (!extendTarget) return;
     setSubmitting(true);
     try {
@@ -224,8 +229,7 @@ export default function ProgramDetailPage() {
         expires_at: values.extends_at ? dayjs(values.extends_at).toISOString() : null,
       });
       message.success("만료일이 연장되었습니다.");
-      setExtendTarget(null);
-      extendForm.resetFields();
+      closeExtendModal();
       load();
     } catch (e: any) {
       message.error(e.message);
@@ -275,6 +279,43 @@ export default function ProgramDetailPage() {
 
   function setQuickDate(amount: number, unit: "day" | "month") {
     form.setFieldValue("expires_at", dayjs().add(amount, unit));
+  }
+
+  function getExtendBaseDate(license: License) {
+    const expiresAt = license.expires_at ? dayjs(license.expires_at) : null;
+
+    if (expiresAt && expiresAt.isAfter(dayjs())) {
+      return expiresAt;
+    }
+
+    return dayjs();
+  }
+
+  function openExtendModal(license: License) {
+    const base = getExtendBaseDate(license);
+    setExtendTarget(license);
+    setExtendInitialBase(base);
+    extendForm.setFieldValue("extends_at", base);
+  }
+
+  function closeExtendModal() {
+    setExtendTarget(null);
+    setExtendInitialBase(null);
+    extendForm.resetFields();
+  }
+
+  function resetExtendDate() {
+    if (!extendInitialBase) return;
+    extendForm.setFieldValue("extends_at", extendInitialBase);
+  }
+
+  function addExtendQuickDate(amount: number, unit: QuickDateUnit) {
+    const currentValue = extendForm.getFieldValue("extends_at");
+    const base = dayjs.isDayjs(currentValue)
+      ? currentValue
+      : extendInitialBase ?? (extendTarget ? getExtendBaseDate(extendTarget) : dayjs());
+
+    extendForm.setFieldValue("extends_at", base.add(amount, unit));
   }
 
   const columns = [
@@ -392,10 +433,7 @@ export default function ProgramDetailPage() {
             <Button
               type="text"
               icon={<CalendarOutlined />}
-              onClick={() => {
-                setExtendTarget(r);
-                extendForm.setFieldValue("extends_at", r.expires_at ? dayjs(r.expires_at) : null);
-              }}
+              onClick={() => openExtendModal(r)}
               style={{ width: 32, height: 32, padding: 0 }}
             />
           </Tooltip>
@@ -477,7 +515,7 @@ export default function ProgramDetailPage() {
                 <Tooltip title="만료일 연장">
                   <Button
                     type="text" icon={<CalendarOutlined />}
-                    onClick={() => { setExtendTarget(r); extendForm.setFieldValue("extends_at", r.expires_at ? dayjs(r.expires_at) : null); }}
+                    onClick={() => openExtendModal(r)}
                     style={{ width: 36, height: 36, padding: 0 }}
                   />
                 </Tooltip>
@@ -796,7 +834,7 @@ export default function ProgramDetailPage() {
           </span>
         }
         open={extendTarget !== null}
-        onCancel={() => { setExtendTarget(null); extendForm.resetFields(); }}
+        onCancel={closeExtendModal}
         footer={null}
         width={420}
       >
@@ -806,17 +844,12 @@ export default function ProgramDetailPage() {
             label={
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span>새 만료일</span>
-                <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {QUICK_DATES.map(({ label, amount, unit }) => (
                     <button
                       key={label}
                       type="button"
-                      onClick={() => {
-                          const base = extendTarget?.expires_at && dayjs(extendTarget.expires_at).isAfter(dayjs())
-                            ? dayjs(extendTarget.expires_at)
-                            : dayjs();
-                          extendForm.setFieldValue("extends_at", base.add(amount, unit));
-                        }}
+                      onClick={() => addExtendQuickDate(amount, unit)}
                       style={{
                         padding: "1px 8px",
                         fontSize: 11,
@@ -833,6 +866,20 @@ export default function ProgramDetailPage() {
                       {label}
                     </button>
                   ))}
+                  <Button
+                    type="default"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={resetExtendDate}
+                    style={{
+                      height: 22,
+                      paddingInline: 8,
+                      fontSize: 11,
+                      fontWeight: 600,
+                    }}
+                  >
+                    초기화
+                  </Button>
                 </div>
               </div>
             }
@@ -845,7 +892,7 @@ export default function ProgramDetailPage() {
             />
           </Form.Item>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button onClick={() => { setExtendTarget(null); extendForm.resetFields(); }}>취소</Button>
+            <Button onClick={closeExtendModal}>취소</Button>
             <Button type="primary" htmlType="submit" loading={submitting} style={{ fontWeight: 600 }}>
               연장
             </Button>
