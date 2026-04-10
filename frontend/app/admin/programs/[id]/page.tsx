@@ -103,6 +103,7 @@ export default function ProgramDetailPage() {
   const [form] = Form.useForm();
   const [extendForm] = Form.useForm<ExtendFormValues>();
   const [contactForm] = Form.useForm();
+  const [metaForm] = Form.useForm();
 
   async function load() {
     try {
@@ -269,6 +270,28 @@ export default function ProgramDetailPage() {
       }
     } catch (e: any) {
       message.error(e.message);
+    }
+  }
+
+  async function handleUpdateMeta(values: Record<string, string | number | null>) {
+    if (!metaTarget || !program) return;
+    setSubmitting(true);
+    try {
+      const updates = program.meta_schemas
+        .filter((s) => values[`meta_${s.id}`] != null)
+        .map((s) => ({
+          schema_id: s.id,
+          value: String(values[`meta_${s.id}`]),
+        }));
+      const updated = await licenseApi.updateMeta(metaTarget.id, updates);
+      setLicenses((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
+      message.success("메타 데이터가 수정되었습니다.");
+      setMetaTarget(null);
+      metaForm.resetFields();
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -444,13 +467,20 @@ export default function ProgramDetailPage() {
             style={{ width: 32, height: 32, padding: 0 }}
           />
           {(program?.meta_schemas.length ?? 0) > 0 && (
-            <Tooltip title="메타 데이터">
+            <Tooltip title="메타 편집">
               <Button
                 type="text"
                 icon={<TableOutlined />}
-                onClick={() => setMetaTarget(r)}
+                onClick={() => {
+                  const initialValues: Record<string, string> = {};
+                  program?.meta_schemas.forEach((s) => {
+                    const existing = r.meta.find((m) => m.key === s.key);
+                    initialValues[`meta_${s.id}`] = existing?.value ?? s.default_value ?? "";
+                  });
+                  metaForm.setFieldsValue(initialValues);
+                  setMetaTarget(r);
+                }}
                 style={{ width: 32, height: 32, padding: 0 }}
-                disabled={r.meta.length === 0}
               />
             </Tooltip>
           )}
@@ -524,9 +554,16 @@ export default function ProgramDetailPage() {
                   <Button
                     type="text"
                     icon={<TableOutlined />}
-                    onClick={() => setMetaTarget(r)}
+                    onClick={() => {
+                      const initialValues: Record<string, string> = {};
+                      program?.meta_schemas.forEach((s) => {
+                        const existing = r.meta.find((m) => m.key === s.key);
+                        initialValues[`meta_${s.id}`] = existing?.value ?? s.default_value ?? "";
+                      });
+                      metaForm.setFieldsValue(initialValues);
+                      setMetaTarget(r);
+                    }}
                     style={{ width: 36, height: 36, padding: 0 }}
-                    disabled={r.meta.length === 0}
                   />
                 )}
                 <Popconfirm
@@ -1026,46 +1063,61 @@ export default function ProgramDetailPage() {
           </div>
         )}
       </Modal>
-      {/* 메타 데이터 뷰어 Modal */}
+      {/* 메타 데이터 편집 Modal */}
       <Modal
         title={
           <span>
-            메타 데이터
+            메타 편집
             <Text type="secondary" style={{ fontSize: 12, fontWeight: 400, marginLeft: 8 }}>
               {metaTarget?.username}
             </Text>
           </span>
         }
         open={metaTarget !== null}
-        onCancel={() => setMetaTarget(null)}
-        footer={<Button onClick={() => setMetaTarget(null)}>닫기</Button>}
-        width={420}
+        onCancel={() => { setMetaTarget(null); metaForm.resetFields(); }}
+        footer={null}
+        width={440}
       >
-        {metaTarget && (
-          <div style={{ marginTop: 16 }}>
-            {metaTarget.meta.length === 0 ? (
-              <Text type="secondary">메타 데이터가 없습니다.</Text>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {metaTarget.meta.map((m) => (
-                  <div
-                    key={m.key}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "10px 14px",
-                      borderRadius: 10,
-                      background: token.colorFillAlter,
-                    }}
-                  >
-                    <Text strong style={{ fontSize: 13 }}>{m.key}</Text>
-                    <Text code style={{ fontSize: 13 }}>{m.value}</Text>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        {metaTarget && program && (
+          <Form form={metaForm} layout="vertical" onFinish={handleUpdateMeta} style={{ marginTop: 16 }}>
+            {program.meta_schemas.map((s) => (
+              <Form.Item
+                key={s.id}
+                name={`meta_${s.id}`}
+                label={
+                  <span>
+                    {s.key}
+                    <Tag color="blue" style={{ marginLeft: 6, fontSize: 10 }}>{s.value_type}</Tag>
+                    {s.description && (
+                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>{s.description}</Text>
+                    )}
+                  </span>
+                }
+                style={{ marginBottom: 12 }}
+              >
+                {s.value_type === "bool" ? (
+                  <Select>
+                    <Select.Option value="true">true</Select.Option>
+                    <Select.Option value="false">false</Select.Option>
+                  </Select>
+                ) : s.value_type === "int" || s.value_type === "float" ? (
+                  <InputNumber
+                    style={{ width: "100%" }}
+                    step={s.value_type === "float" ? 0.1 : 1}
+                    placeholder={s.default_value ?? undefined}
+                  />
+                ) : (
+                  <Input placeholder={s.default_value ?? undefined} />
+                )}
+              </Form.Item>
+            ))}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+              <Button onClick={() => { setMetaTarget(null); metaForm.resetFields(); }}>취소</Button>
+              <Button type="primary" htmlType="submit" loading={submitting} style={{ fontWeight: 600 }}>
+                저장
+              </Button>
+            </div>
+          </Form>
         )}
       </Modal>
     </div>

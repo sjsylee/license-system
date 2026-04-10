@@ -199,6 +199,14 @@ def remove_device(db: Session, device: Device) -> None:
     db.commit()
 
 
+_CAST_FN: dict = {
+    "int": int,
+    "float": float,
+    "bool": lambda v: v.lower() in ("true", "1", "yes"),
+    "str": str,
+}
+
+
 # --- Meta operations ---
 
 def set_meta(db: Session, license_id: int, schema_id: int, key: str, value: str) -> LicenseMeta:
@@ -216,3 +224,23 @@ def set_meta(db: Session, license_id: int, schema_id: int, key: str, value: str)
     db.commit()
     db.refresh(meta)
     return meta
+
+
+def bulk_update_meta(db: Session, license_: License, updates: list) -> None:
+    """라이선스 메타 값을 일괄 업데이트합니다. ValueError 발생 시 롤백하지 않고 호출자에게 위임."""
+    from app.models.program import ProgramMetaSchema
+
+    for item in updates:
+        schema = db.get(ProgramMetaSchema, item.schema_id)
+        if not schema:
+            raise ValueError(f"Schema {item.schema_id}를 찾을 수 없습니다.")
+        if schema.program_id != license_.program_id:
+            raise ValueError(f"Schema {item.schema_id}는 이 라이선스 프로그램에 속하지 않습니다.")
+        cast_fn = _CAST_FN.get(schema.value_type, str)
+        try:
+            cast_fn(item.value)
+        except (ValueError, TypeError):
+            raise ValueError(
+                f"'{item.value}'을 {schema.value_type}로 변환할 수 없습니다. (key: {schema.key})"
+            )
+        set_meta(db, license_.id, schema.id, schema.key, item.value)

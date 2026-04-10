@@ -72,6 +72,15 @@ class LicenseMetaResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class LicenseMetaUpdateItem(BaseModel):
+    schema_id: int = Field(..., description="프로그램 메타 스키마 ID")
+    value: str = Field(..., description="변경할 값 (문자열로 전달, value_type에 따라 검증됨)")
+
+
+class LicenseMetaBulkUpdate(BaseModel):
+    updates: list[LicenseMetaUpdateItem] = Field(..., min_length=1, description="업데이트할 메타 항목 목록 (최소 1개)")
+
+
 class LicenseResponse(BaseModel):
     id: int
     program_id: int

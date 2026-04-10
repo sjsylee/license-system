@@ -87,7 +87,7 @@ export const programApi = {
     }),
   delete: (id: number) =>
     request<void>(`/admin/programs/${id}`, { method: "DELETE" }),
-  createMetaSchema: (programId: number, data: Omit<MetaSchema, "id">) =>
+  createMetaSchema: (programId: number, data: Omit<MetaSchema, "id"> & { backfill_value?: string | null }) =>
     request<MetaSchema>(`/admin/programs/${programId}/meta-schemas`, {
       method: "POST",
       body: JSON.stringify(data),
@@ -215,5 +215,10 @@ export const licenseApi = {
     request<BulkImportResponse>("/admin/licenses/bulk-import", {
       method: "POST",
       body: JSON.stringify({ program_id: programId, max_devices: maxDevices, licenses, meta }),
+    }),
+  updateMeta: (licenseId: number, updates: { schema_id: number; value: string }[]) =>
+    request<License>(`/admin/licenses/${licenseId}/meta`, {
+      method: "PATCH",
+      body: JSON.stringify({ updates }),
     }),
 };
