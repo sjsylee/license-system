@@ -7,7 +7,7 @@ from app.crud import license as crud_license
 from app.crud import program as crud_program
 from app.dependencies import get_current_admin, get_db
 from app.models.admin import Admin
-from app.schemas.license import BulkImportRequest, BulkImportResponse, LicenseCreate, LicenseResponse, LicenseUpdate
+from app.schemas.license import BulkImportRequest, BulkImportResponse, LicenseCreate, LicenseMetaBulkUpdate, LicenseResponse, LicenseUpdate
 
 router = APIRouter(prefix="/admin/licenses", tags=["라이선스 관리"])
 
@@ -113,6 +113,35 @@ def update_license(
                 detail="만료된 라이선스는 만료일을 연장한 후 활성화할 수 있습니다.",
             )
     return crud_license.update(db, license_, body)
+
+
+@router.patch(
+    "/{license_id}/meta",
+    response_model=LicenseResponse,
+    summary="라이선스 메타 값 수정",
+    description=(
+        "라이선스의 커스텀 변수 값을 수정합니다.\n\n"
+        "- 전달한 schema_id 항목만 업데이트됩니다 (나머지는 유지).\n"
+        "- 값은 해당 스키마의 value_type으로 캐스팅 가능해야 합니다.\n"
+        "- 존재하지 않는 메타 항목이면 새로 생성됩니다 (upsert)."
+    ),
+    response_description="수정된 라이선스 정보",
+)
+def update_license_meta(
+    license_id: int,
+    body: LicenseMetaBulkUpdate,
+    db: Session = Depends(get_db),
+    _: Admin = Depends(get_current_admin),
+):
+    license_ = crud_license.get_by_id(db, license_id)
+    if not license_:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="License not found")
+    try:
+        crud_license.bulk_update_meta(db, license_, body.updates)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    db.refresh(license_)
+    return license_
 
 
 @router.delete(

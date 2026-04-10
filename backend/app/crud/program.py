@@ -40,8 +40,22 @@ def delete(db: Session, program: Program) -> None:
 def create_meta_schema(
     db: Session, program_id: int, data: ProgramMetaSchemaCreate
 ) -> ProgramMetaSchema:
-    schema = ProgramMetaSchema(program_id=program_id, **data.model_dump())
+    schema = ProgramMetaSchema(program_id=program_id, **data.model_dump(exclude={"backfill_value"}))
     db.add(schema)
+    db.flush()  # schema.id 확보 (트랜잭션 유지)
+
+    if data.backfill_value is not None:
+        from app.models.license import License, LicenseMeta
+
+        licenses = db.query(License).filter(License.program_id == program_id).all()
+        for lic in licenses:
+            db.add(LicenseMeta(
+                license_id=lic.id,
+                schema_id=schema.id,
+                key=schema.key,
+                value=data.backfill_value,
+            ))
+
     db.commit()
     db.refresh(schema)
     return schema

@@ -1,9 +1,16 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 MetaValueType = Literal["int", "str", "bool", "float"]
+
+_CAST_FN: dict = {
+    "int": int,
+    "float": float,
+    "bool": lambda v: v.lower() in ("true", "1", "yes"),
+    "str": str,
+}
 
 
 class ProgramMetaSchemaCreate(BaseModel):
@@ -11,6 +18,25 @@ class ProgramMetaSchemaCreate(BaseModel):
     value_type: MetaValueType = Field(..., description="값의 타입 (int | str | bool | float)")
     description: str | None = Field(default=None, description="변수 설명", examples=["최대 수집 가능 개수"])
     default_value: str | None = Field(default=None, description="기본값 (문자열로 저장)", examples=["100"])
+    backfill_value: str | None = Field(
+        default=None,
+        description=(
+            "기존 라이선스에 소급 적용할 값. "
+            "null이면 기존 라이선스에 적용하지 않습니다. "
+            "빈 문자열이라도 전달하면 해당 값으로 소급 적용합니다."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_backfill_castable(self) -> "ProgramMetaSchemaCreate":
+        if self.backfill_value:  # non-empty string only
+            try:
+                _CAST_FN[self.value_type](self.backfill_value)
+            except (ValueError, TypeError):
+                raise ValueError(
+                    f"backfill_value '{self.backfill_value}'을 {self.value_type}로 변환할 수 없습니다."
+                )
+        return self
 
 
 class ProgramMetaSchemaResponse(BaseModel):

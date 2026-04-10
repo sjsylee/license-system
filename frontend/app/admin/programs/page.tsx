@@ -6,7 +6,7 @@ import {
 } from "@ant-design/icons";
 import {
   App, Button, Card, Col, Form, Input, Modal, Popconfirm,
-  Row, Select, Space, Tag, Tooltip, Typography, theme,
+  Radio, Row, Select, Space, Tag, Tooltip, Typography, theme,
 } from "antd";
 import Image from "next/image";
 import EmptyLottie from "@/components/EmptyLottie";
@@ -43,6 +43,7 @@ export default function ProgramsPage() {
   const [schemaOpen, setSchemaOpen] = useState<number | null>(null);
   const [createForm] = Form.useForm();
   const [schemaForm] = Form.useForm();
+  const [backfillStrategy, setBackfillStrategy] = useState<"skip" | "default" | "custom">("skip");
   const [submitting, setSubmitting] = useState(false);
   const [createImageFile, setCreateImageFile] = useState<File | null>(null);
   const [createImagePreview, setCreateImagePreview] = useState<string | null>(null);
@@ -109,18 +110,29 @@ export default function ProgramsPage() {
     value_type: MetaValueType;
     description?: string;
     default_value?: string;
+    backfill_custom_value?: string;
   }) {
     if (schemaOpen === null) return;
     setSubmitting(true);
+
+    let backfill_value: string | null = null;
+    if (backfillStrategy === "default") {
+      backfill_value = values.default_value ?? null;
+    } else if (backfillStrategy === "custom") {
+      backfill_value = values.backfill_custom_value ?? "";
+    }
+
     try {
       await programApi.createMetaSchema(schemaOpen, {
         key: values.key,
         value_type: values.value_type,
         description: values.description ?? null,
         default_value: values.default_value ?? null,
+        backfill_value,
       });
       message.success("확장 변수가 추가되었습니다.");
       schemaForm.resetFields();
+      setBackfillStrategy("skip");
       load();
     } catch (e: any) {
       message.error(e.message);
@@ -463,7 +475,7 @@ export default function ProgramsPage() {
       <Modal
         title="확장 변수 관리"
         open={schemaOpen !== null}
-        onCancel={() => { setSchemaOpen(null); schemaForm.resetFields(); }}
+        onCancel={() => { setSchemaOpen(null); schemaForm.resetFields(); setBackfillStrategy("skip"); }}
         footer={null}
         width={560}
       >
@@ -543,6 +555,32 @@ export default function ProgramsPage() {
                   <Form.Item name="default_value" label="기본값">
                     <Input placeholder="100" />
                   </Form.Item>
+                  <Form.Item label="기존 라이선스 소급 적용">
+                    <Radio.Group
+                      value={backfillStrategy}
+                      onChange={(e) => setBackfillStrategy(e.target.value)}
+                    >
+                      <Space direction="vertical" size={4}>
+                        <Radio value="skip">적용 안 함</Radio>
+                        <Radio value="default">기본값으로 적용</Radio>
+                        <Radio value="custom">직접 입력</Radio>
+                      </Space>
+                    </Radio.Group>
+                    {backfillStrategy === "default" && !schemaForm.getFieldValue("default_value") && (
+                      <Text type="warning" style={{ fontSize: 12, display: "block", marginTop: 6 }}>
+                        기본값 미설정 시 소급 적용되지 않습니다.
+                      </Text>
+                    )}
+                  </Form.Item>
+                  {backfillStrategy === "custom" && (
+                    <Form.Item
+                      name="backfill_custom_value"
+                      label="소급 적용 값"
+                      rules={[{ required: true, message: "소급 값을 입력하세요" }]}
+                    >
+                      <Input placeholder="기존 라이선스에 일괄 적용할 값" />
+                    </Form.Item>
+                  )}
                   <div style={{ display: "flex", justifyContent: "flex-end" }}>
                     <Button type="primary" htmlType="submit" loading={submitting} style={{ fontWeight: 600 }}>
                       추가
