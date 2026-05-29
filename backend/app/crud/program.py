@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.domain import program_meta
 from app.models.program import Program, ProgramMetaSchema
 from app.schemas.program import ProgramCreate, ProgramMetaSchemaCreate, ProgramUpdate
 
@@ -44,17 +45,7 @@ def create_meta_schema(
     db.add(schema)
     db.flush()  # schema.id 확보 (트랜잭션 유지)
 
-    if data.backfill_value is not None:
-        from app.models.license import License, LicenseMeta
-
-        licenses = db.query(License).filter(License.program_id == program_id).all()
-        for lic in licenses:
-            db.add(LicenseMeta(
-                license_id=lic.id,
-                schema_id=schema.id,
-                key=schema.key,
-                value=data.backfill_value,
-            ))
+    program_meta.backfill_schema_value(db, program_id, schema, data.backfill_value)
 
     db.commit()
     db.refresh(schema)

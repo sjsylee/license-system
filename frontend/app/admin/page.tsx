@@ -5,29 +5,21 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Badge, Card, Col, Row, Tag, Typography, theme } from "antd";
 import { useEffect, useState } from "react";
-import { licenseApi, programApi, type License, type Program } from "@/lib/api";
-import { daysUntil, formatKST, isToday, parseBackendDate } from "@/lib/utils";
+import { loadAdminDashboardReadModel, type AdminDashboardReadModel } from "@/lib/admin-dashboard";
+import { formatKST } from "@/lib/utils";
 
 const { Title, Text } = Typography;
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 
 export default function DashboardPage() {
   const router = useRouter();
   const { token } = theme.useToken();
-  const [programs, setPrograms] = useState<Program[]>([]);
-  const [allLicenses, setAllLicenses] = useState<License[]>([]);
+  const [dashboard, setDashboard] = useState<AdminDashboardReadModel | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const progs = await programApi.list();
-        setPrograms(progs);
-        const licenseArrays = await Promise.all(
-          progs.map((p) => licenseApi.list(p.id))
-        );
-        setAllLicenses(licenseArrays.flat());
+        setDashboard(await loadAdminDashboardReadModel());
       } finally {
         setLoading(false);
       }
@@ -35,78 +27,40 @@ export default function DashboardPage() {
     load();
   }, []);
 
-  const dashboardLicenses = allLicenses.filter((l) => l.username !== "Admin");
-  const activeLicenses = dashboardLicenses.filter((l) => l.is_active);
-  const totalDevices = dashboardLicenses.reduce((sum, l) => sum + l.devices.length, 0);
-
-  const programMap = Object.fromEntries(programs.map((p) => [p.id, p.name]));
-
-  const recentDevices = allLicenses
-    .flatMap((l) =>
-      l.devices.map((d) => ({
-        device_name: d.device_name || d.hwid.slice(0, 8),
-        program_name: programMap[l.program_id] || "",
-        last_seen_at: d.last_seen_at,
-        username: l.username,
-      }))
-    )
-    .filter((d) => d.last_seen_at)
-    .sort((a, b) => {
-      const bTime = parseBackendDate(b.last_seen_at)?.getTime() ?? 0;
-      const aTime = parseBackendDate(a.last_seen_at)?.getTime() ?? 0;
-      return bTime - aTime;
-    })
-    .slice(0, 5);
-
-  const todayLicenses = allLicenses
-    .filter((l) => isToday(l.created_at))
-    .sort((a, b) => {
-      const bTime = parseBackendDate(b.created_at)?.getTime() ?? 0;
-      const aTime = parseBackendDate(a.created_at)?.getTime() ?? 0;
-      return bTime - aTime;
-    })
-    .slice(0, 5)
-    .map((l) => ({
-      license_key: l.license_key,
-      program_name: programMap[l.program_id] || "",
-      created_at: l.created_at,
-      username: l.username,
-    }));
-
-  const expiringLicenses = allLicenses
-    .filter((l) => l.is_active && l.expires_at && daysUntil(l.expires_at) >= 0 && daysUntil(l.expires_at) <= 3)
-    .map((l) => ({
-      username: l.username,
-      program_name: programMap[l.program_id] || "",
-      expires_at: l.expires_at!,
-      days: daysUntil(l.expires_at!),
-    }))
-    .sort((a, b) => a.days - b.days)
-    .slice(0, 5);
+  const overview = dashboard?.overview ?? {
+    totalPrograms: 0,
+    totalLicenses: 0,
+    activeLicenses: 0,
+    totalDevices: 0,
+  };
+  const recentDevices = dashboard?.recentDevices ?? [];
+  const todayLicenses = dashboard?.todayLicenses ?? [];
+  const expiringLicenses = dashboard?.expiringLicenses ?? [];
+  const programSummaries = dashboard?.programSummaries ?? [];
 
   const stats = [
     {
       title: "총 프로그램",
-      value: programs.length,
+      value: overview.totalPrograms,
       icon: <AppstoreOutlined style={{ color: "#3182F6" }} />,
       color: "rgba(49,130,246,0.08)",
     },
     {
       title: "전체 라이선스",
-      value: dashboardLicenses.length,
+      value: overview.totalLicenses,
       icon: <KeyOutlined style={{ color: "#00B448" }} />,
       color: "rgba(0,180,72,0.08)",
     },
     {
       title: "활성 라이선스",
-      value: activeLicenses.length,
+      value: overview.activeLicenses,
       icon: <CheckCircleOutlined style={{ color: "#3182F6" }} />,
       color: "rgba(49,130,246,0.08)",
       href: "/admin/active-licenses",
     },
     {
       title: "등록 기기 수",
-      value: totalDevices,
+      value: overview.totalDevices,
       icon: <LaptopOutlined style={{ color: "#F7A600" }} />,
       color: "rgba(247,166,0,0.08)",
       href: "/admin/registered-devices",
@@ -298,24 +252,19 @@ export default function DashboardPage() {
       </div>
 
       {/* Program summary */}
-      {programs.length > 0 && (
+      {programSummaries.length > 0 && (
         <div style={{ marginTop: 32 }}>
           <Title level={5} style={{ marginBottom: 16, fontWeight: 700 }}>
             프로그램별 현황
           </Title>
           <Row gutter={[16, 16]}>
-            {programs.map((p) => {
-              const licenses = allLicenses.filter((l) => l.program_id === p.id);
-              const active = licenses.filter((l) => l.is_active).length;
-              const inactive = licenses.length - active;
-              const activeRatio = licenses.length ? (active / licenses.length) * 100 : 0;
-              const imgSrc = p.image_url ? `${API_BASE}${p.image_url}` : null;
+            {programSummaries.map((program) => {
               return (
-                <Col xs={24} sm={12} lg={8} key={p.id}>
+                <Col xs={24} sm={12} lg={8} key={program.id}>
                   <Card
                     hoverable
                     onClick={() =>
-                      (window.location.href = `/admin/programs/${p.id}`)
+                      (window.location.href = `/admin/programs/${program.id}`)
                     }
                     className="glass-card"
                     style={{ cursor: "pointer" }}
@@ -323,40 +272,40 @@ export default function DashboardPage() {
                     <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <Text strong style={{ fontSize: 15 }}>
-                          {p.name}
+                          {program.name}
                         </Text>
-                        {p.description && (
+                        {program.description && (
                           <div>
                             <Text type="secondary" style={{ fontSize: 12 }}>
-                              {p.description}
+                              {program.description}
                             </Text>
                           </div>
                         )}
                         <div style={{ marginTop: 14 }}>
                           <div style={{ height: 4, borderRadius: 99, background: token.colorFillSecondary, marginBottom: 10, overflow: "hidden" }}>
-                            <div style={{ height: "100%", borderRadius: 99, background: "#00B448", width: `${activeRatio}%`, transition: "width 0.4s ease" }} />
+                            <div style={{ height: "100%", borderRadius: 99, background: "#00B448", width: `${program.activeRatio}%`, transition: "width 0.4s ease" }} />
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
                             <span style={{ display: "flex", alignItems: "baseline", gap: 3, whiteSpace: "nowrap" }}>
-                              <Text strong style={{ fontSize: 15 }}>{licenses.length}</Text>
+                              <Text strong style={{ fontSize: 15 }}>{program.licenseCount}</Text>
                               <Text type="secondary" style={{ fontSize: 11 }}>전체</Text>
                             </span>
                             <Text type="secondary" style={{ fontSize: 11, flexShrink: 0 }}>·</Text>
                             <span style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
                               <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#00B448", flexShrink: 0, display: "inline-block" }} />
-                              <Text strong style={{ fontSize: 15, color: "#00B448" }}>{active}</Text>
+                              <Text strong style={{ fontSize: 15, color: "#00B448" }}>{program.activeLicenseCount}</Text>
                               <Text type="secondary" style={{ fontSize: 11 }}>활성</Text>
                             </span>
                             <Text type="secondary" style={{ fontSize: 11, flexShrink: 0 }}>·</Text>
                             <span style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
                               <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#8B95A1", flexShrink: 0, display: "inline-block" }} />
-                              <Text strong style={{ fontSize: 15, color: "#8B95A1" }}>{inactive}</Text>
+                              <Text strong style={{ fontSize: 15, color: "#8B95A1" }}>{program.inactiveLicenseCount}</Text>
                               <Text type="secondary" style={{ fontSize: 11 }}>비활성</Text>
                             </span>
                           </div>
                         </div>
                       </div>
-                      {imgSrc && (
+                      {program.imageSrc && (
                         <div
                           style={{
                             flexShrink: 0,
@@ -368,8 +317,8 @@ export default function DashboardPage() {
                           }}
                         >
                           <Image
-                            src={imgSrc}
-                            alt={p.name}
+                            src={program.imageSrc}
+                            alt={program.name}
                             fill
                             unoptimized
                             style={{ objectFit: "cover" }}

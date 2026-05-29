@@ -6,11 +6,8 @@ import type { TableProps } from "antd";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import EmptyLottie from "@/components/EmptyLottie";
-import {
-  getActiveDashboardLicenses,
-  loadDashboardLicenses,
-  type DashboardLicense,
-} from "@/lib/admin-dashboard";
+import { loadAdminDashboardReadModel, type DashboardLicense } from "@/lib/admin-dashboard";
+import { getLicenseStatus } from "@/lib/license-status";
 import { formatKST, parseBackendDate } from "@/lib/utils";
 
 const { Title, Text } = Typography;
@@ -18,22 +15,21 @@ const { Title, Text } = Typography;
 type SortKey = "newest" | "oldest";
 
 function renderLicenseExpiry(license: DashboardLicense) {
-  if (!license.expires_at) {
+  const status = getLicenseStatus(license);
+
+  if (status.isPermanent) {
     return <Tag color="blue" style={{ margin: 0 }}>활성 · 무기한</Tag>;
   }
 
-  const expiresAt = parseBackendDate(license.expires_at);
-  if (!expiresAt) {
+  if (status.kind === "invalid") {
     return <Text type="secondary" style={{ fontSize: 12, whiteSpace: "nowrap" }}>-</Text>;
   }
 
-  const isExpired = expiresAt.getTime() < Date.now();
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>{formatKST(license.expires_at)}</Text>
-      <Tag color={isExpired ? "red" : "green"} style={{ margin: 0, width: "fit-content" }}>
-        {isExpired ? "활성 · 만료됨" : "활성"}
+      <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>{status.formattedDate}</Text>
+      <Tag color={status.isExpired ? "red" : "green"} style={{ margin: 0, width: "fit-content" }}>
+        {status.isExpired ? "활성 · 만료됨" : "활성"}
       </Tag>
     </div>
   );
@@ -53,8 +49,8 @@ export default function ActiveLicensesPage() {
     async function load() {
       setLoading(true);
       try {
-        const dashboardLicenses = await loadDashboardLicenses();
-        setLicenses(getActiveDashboardLicenses(dashboardLicenses));
+        const dashboard = await loadAdminDashboardReadModel();
+        setLicenses(dashboard.activeLicenses);
       } catch (error) {
         message.error(error instanceof Error ? error.message : "활성 라이선스를 불러오지 못했습니다.");
       } finally {

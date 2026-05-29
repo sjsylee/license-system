@@ -4,7 +4,7 @@ import { AntdRegistry } from "@ant-design/nextjs-registry";
 import { App, ConfigProvider, theme as antTheme } from "antd";
 import koKR from "antd/locale/ko_KR";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 const TOSS_BLUE = "#3182F6";
 
@@ -92,11 +92,11 @@ const componentTokens = {
 
 export default function AntdProvider({ children }: { children: React.ReactNode }) {
   const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   const isDark = mounted && resolvedTheme === "dark";
 

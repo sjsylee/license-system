@@ -1,13 +1,13 @@
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.core.client_ip import get_client_ip
 from app.core.rate_limit import validate_rate_limiter
-from app.crud import license as crud_license
-from app.crud import program as crud_program
 from app.dependencies import get_db
+from app.domain.license_validation import (
+    public_validate_error_code,
+    validate_license as validate_license_domain,
+)
 from app.schemas.validate import ValidateRequest, ValidateResponse
 
 router = APIRouter(prefix="/v1", tags=["라이선스 검증"])
@@ -18,13 +18,6 @@ VALIDATE_KEY_LIMIT = 30
 VALIDATE_KEY_WINDOW_SECONDS = 60
 VALIDATE_PAIR_LIMIT = 20
 VALIDATE_PAIR_WINDOW_SECONDS = 60
-
-_CAST = {
-    "int": int,
-    "float": float,
-    "bool": lambda v: v.lower() in ("true", "1", "yes"),
-    "str": str,
-}
 
 
 def _validate_limit_keys(client_ip: str, license_key: str) -> tuple[str, str, str]:
@@ -57,17 +50,9 @@ def _rate_limited_response() -> ValidateResponse:
     return ValidateResponse(valid=False, error_code="rate_limited")
 
 
-def _public_validate_error_code(error_code: str) -> str:
-    if error_code in {"program_not_found", "license_not_found", "program_mismatch"}:
-        return "invalid_license"
-    if error_code in {"license_inactive", "license_expired"}:
-        return "license_unusable"
-    return error_code
-
-
 def _invalid_validate_response(client_ip: str, license_key: str, error_code: str) -> ValidateResponse:
     _record_validate_attempt(client_ip, license_key)
-    return ValidateResponse(valid=False, error_code=_public_validate_error_code(error_code))
+    return ValidateResponse(valid=False, error_code=public_validate_error_code(error_code))
 
 
 @router.post(
@@ -96,43 +81,19 @@ def validate_license(body: ValidateRequest, request: Request, db: Session = Depe
     if _is_validate_rate_limited(client_ip, body.license_key):
         return _rate_limited_response()
 
-    program = crud_program.get_by_name(db, body.program_name)
-    if not program:
-        return _invalid_validate_response(client_ip, body.license_key, "program_not_found")
-
-    license_ = crud_license.get_by_key(db, body.license_key)
-    if not license_:
-        return _invalid_validate_response(client_ip, body.license_key, "license_not_found")
-
-    if license_.program_id != program.id:
-        return _invalid_validate_response(client_ip, body.license_key, "program_mismatch")
-
-    if not license_.is_active:
-        return _invalid_validate_response(client_ip, body.license_key, "license_inactive")
-
-    if license_.expires_at and license_.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
-        return _invalid_validate_response(client_ip, body.license_key, "license_expired")
-
-    device = crud_license.get_device(db, license_.id, body.hwid)
-    if device:
-        crud_license.touch_device(db, device)
-    else:
-        count = crud_license.count_devices(db, license_.id)
-        if count >= license_.max_devices:
-            return _invalid_validate_response(client_ip, body.license_key, "device_limit_reached")
-        crud_license.register_device(db, license_.id, body.hwid, body.device_name)
-
-    meta: dict = {}
-    for m in license_.meta:
-        cast_fn = _CAST.get(m.schema.value_type, str)
-        try:
-            meta[m.key] = cast_fn(m.value)
-        except (ValueError, TypeError):
-            meta[m.key] = m.value
+    result = validate_license_domain(
+        db,
+        program_name=body.program_name,
+        license_key=body.license_key,
+        hwid=body.hwid,
+        device_name=body.device_name,
+    )
+    if not result.valid:
+        return _invalid_validate_response(client_ip, body.license_key, result.error_code or "invalid_license")
 
     return ValidateResponse(
         valid=True,
-        username=license_.username,
-        expires_at=license_.expires_at,
-        meta=meta if meta else None,
+        username=result.username,
+        expires_at=result.expires_at,
+        meta=result.meta,
     )

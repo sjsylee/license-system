@@ -10,14 +10,13 @@ import {
   MenuUnfoldOutlined,
   ToolOutlined,
 } from "@ant-design/icons";
-import { Button, Drawer, Layout, Tooltip, Typography, theme } from "antd";
+import { Button, Drawer, Layout, Tooltip, theme } from "antd";
 import { useRouter, usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import ThemeToggle from "./ThemeToggle";
 import { logout } from "@/lib/auth";
 
 const { Header, Sider, Content } = Layout;
-const { Text } = Typography;
 
 type NavChild = { key: string; icon: React.ReactNode; label: string };
 type NavItem =
