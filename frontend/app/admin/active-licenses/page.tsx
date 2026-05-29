@@ -28,6 +28,14 @@ function renderLicenseExpiry(license: DashboardLicense) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>{status.formattedDate}</Text>
+      {status.legacyElectronRemainingDays !== null && (
+        <Text
+          type={status.legacyElectronRemainingDays !== status.daysUntilExpiry ? "warning" : "secondary"}
+          style={{ fontSize: 11, whiteSpace: "nowrap" }}
+        >
+          앱 표시 {status.legacyElectronRemainingDays}일
+        </Text>
+      )}
       <Tag color={status.isExpired ? "red" : "green"} style={{ margin: 0, width: "fit-content" }}>
         {status.isExpired ? "활성 · 만료됨" : "활성"}
       </Tag>
@@ -117,7 +125,7 @@ export default function ActiveLicensesPage() {
     {
       title: "만료일 / 상태",
       key: "expires_at",
-      width: 170,
+      width: 180,
       render: (_value: unknown, license: DashboardLicense) => renderLicenseExpiry(license),
     },
     {

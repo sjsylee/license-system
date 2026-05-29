@@ -1,5 +1,7 @@
 import { daysUntil, formatKST, isToday, parseBackendDate } from "./utils";
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 export type LicenseStatusInput = {
   is_active: boolean;
   expires_at: string | null;
@@ -22,6 +24,7 @@ export type LicenseExpiryStatus = {
   expiresAt: Date | null;
   formattedDate: string | null;
   daysUntilExpiry: number | null;
+  legacyElectronRemainingDays: number | null;
   isExpired: boolean;
   isPermanent: boolean;
   expiresToday: boolean;
@@ -39,6 +42,7 @@ export function getLicenseExpiryStatus(expiresAtValue: string | null): LicenseEx
       expiresAt: null,
       formattedDate: null,
       daysUntilExpiry: null,
+      legacyElectronRemainingDays: null,
       isExpired: false,
       isPermanent: true,
       expiresToday: false,
@@ -52,6 +56,7 @@ export function getLicenseExpiryStatus(expiresAtValue: string | null): LicenseEx
       expiresAt: null,
       formattedDate: null,
       daysUntilExpiry: null,
+      legacyElectronRemainingDays: null,
       isExpired: false,
       isPermanent: false,
       expiresToday: false,
@@ -60,6 +65,7 @@ export function getLicenseExpiryStatus(expiresAtValue: string | null): LicenseEx
 
   const isExpired = expiresAt.getTime() < Date.now();
   const daysUntilExpiry = daysUntil(expiresAtValue);
+  const legacyElectronRemainingDays = getLegacyElectronRemainingDays(expiresAtValue);
   const expiresToday = daysUntilExpiry === 0;
   const kind: LicenseExpiryStatusKind = isExpired
     ? "expired"
@@ -74,6 +80,7 @@ export function getLicenseExpiryStatus(expiresAtValue: string | null): LicenseEx
     expiresAt,
     formattedDate: formatKST(expiresAtValue),
     daysUntilExpiry,
+    legacyElectronRemainingDays,
     isExpired,
     isPermanent: false,
     expiresToday,
@@ -116,4 +123,13 @@ export function isLicenseExpiringWithin(license: LicenseStatusInput, days: numbe
 export function getLicenseExpirySortTime(license: Pick<LicenseStatusInput, "expires_at">): number {
   if (!license.expires_at) return Number.MAX_SAFE_INTEGER;
   return parseBackendDate(license.expires_at)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+}
+
+export function getLegacyElectronRemainingDays(expiresAtValue: string | null): number | null {
+  if (!expiresAtValue) return null;
+
+  const expiry = new Date(expiresAtValue).getTime();
+  if (Number.isNaN(expiry)) return null;
+
+  return Math.max(0, Math.floor((expiry - Date.now()) / MS_PER_DAY));
 }

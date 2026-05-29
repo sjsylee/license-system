@@ -45,13 +45,30 @@ function RemainingDays({ expiresAt }: { expiresAt: string | null }) {
   }
 
   if (status.kind === "expired") {
-    return <Text type="danger" style={{ fontSize: 12, whiteSpace: "nowrap" }}>만료됨</Text>;
+    return (
+      <Space size={4} orientation="vertical" style={{ lineHeight: 1.3 }}>
+        <Text type="danger" style={{ fontSize: 12, whiteSpace: "nowrap" }}>만료됨</Text>
+        {status.legacyElectronRemainingDays !== null && (
+          <Text type="secondary" style={{ fontSize: 11, whiteSpace: "nowrap" }}>
+            앱 표시 {status.legacyElectronRemainingDays}일
+          </Text>
+        )}
+      </Space>
+    );
   }
   if (status.kind === "today") {
     return (
       <Space size={4} orientation="vertical" style={{ lineHeight: 1.3 }}>
         <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>{status.formattedDate}</Text>
         <Text type="danger" style={{ fontSize: 11, whiteSpace: "nowrap" }}>오늘 만료</Text>
+        {status.legacyElectronRemainingDays !== null && (
+          <Text
+            type={status.legacyElectronRemainingDays !== status.daysUntilExpiry ? "warning" : "secondary"}
+            style={{ fontSize: 11, whiteSpace: "nowrap" }}
+          >
+            앱 표시 {status.legacyElectronRemainingDays}일
+          </Text>
+        )}
       </Space>
     );
   }
@@ -65,6 +82,14 @@ function RemainingDays({ expiresAt }: { expiresAt: string | null }) {
           ? <span style={{ color: daysUntilExpiry <= 7 ? "#ff4d4f" : "#fa8c16" }}>D-{daysUntilExpiry}</span>
           : `${daysUntilExpiry}일 남음`}
       </Text>
+      {status.legacyElectronRemainingDays !== null && (
+        <Text
+          type={status.legacyElectronRemainingDays !== status.daysUntilExpiry ? "warning" : "secondary"}
+          style={{ fontSize: 11, whiteSpace: "nowrap" }}
+        >
+          앱 표시 {status.legacyElectronRemainingDays}일
+        </Text>
+      )}
     </Space>
   );
 }
@@ -186,7 +211,7 @@ export default function ProgramDetailPage() {
       title: "만료일",
       dataIndex: "expires_at",
       key: "expires_at",
-      width: 110,
+      width: 130,
       responsive: ["md"],
       onHeaderCell: () => noWrap,
       render: (v: string | null) => <RemainingDays expiresAt={v} />,
