@@ -153,6 +153,10 @@ export default function ProgramDetailPage() {
       error: message.error,
     },
   });
+  const extendPreviewValue = Form.useWatch("extends_at", extendForm);
+  const extendPreviewStatus = dayjs.isDayjs(extendPreviewValue)
+    ? getLicenseExpiryStatus(extendPreviewValue.toISOString())
+    : null;
 
   const columns: TableProps<License>["columns"] = [
     {
@@ -722,6 +726,36 @@ export default function ProgramDetailPage() {
               placeholder="날짜 선택"
             />
           </Form.Item>
+          {extendPreviewStatus && extendPreviewStatus.kind !== "invalid" && !extendPreviewStatus.isPermanent && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                padding: "10px 12px",
+                borderRadius: 8,
+                background: token.colorFillAlter,
+                marginTop: -8,
+                marginBottom: 16,
+              }}
+            >
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                저장 후 LicenseOS 표시 {extendPreviewStatus.daysUntilExpiry ?? 0}일
+              </Text>
+              {extendPreviewStatus.legacyElectronRemainingDays !== null && (
+                <Text
+                  type={
+                    extendPreviewStatus.legacyElectronRemainingDays !== extendPreviewStatus.daysUntilExpiry
+                      ? "warning"
+                      : "secondary"
+                  }
+                  style={{ fontSize: 12 }}
+                >
+                  Electron 앱 표시 {extendPreviewStatus.legacyElectronRemainingDays}일
+                </Text>
+              )}
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
             <Button onClick={closeExtendModal}>취소</Button>
             <Button type="primary" htmlType="submit" loading={submitting} style={{ fontWeight: 600 }}>
