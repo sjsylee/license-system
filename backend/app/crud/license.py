@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.security import generate_license_key
+from app.domain import program_meta
 from app.models.license import Device, License, LicenseMeta
 from app.schemas.license import LicenseCreate, LicenseUpdate
 
@@ -40,19 +41,7 @@ def create(db: Session, data: LicenseCreate) -> License:
     db.add(license_)
     db.flush()
 
-    for meta_in in data.meta:
-        from app.models.program import ProgramMetaSchema
-
-        schema = db.get(ProgramMetaSchema, meta_in.schema_id)
-        if schema:
-            db.add(
-                LicenseMeta(
-                    license_id=license_.id,
-                    schema_id=schema.id,
-                    key=schema.key,
-                    value=meta_in.value,
-                )
-            )
+    program_meta.add_meta_values(db, license_.id, data.meta)
 
     db.commit()
     db.refresh(license_)
@@ -60,11 +49,9 @@ def create(db: Session, data: LicenseCreate) -> License:
 
 
 def bulk_import(db: Session, program_id: int, max_devices: int, items: list, meta_inputs: list) -> dict:
-    from app.models.program import ProgramMetaSchema
     from app.schemas.license import BulkImportItemResult
 
-    # 메타 스키마 미리 조회
-    meta_schemas = {m.schema_id: db.get(ProgramMetaSchema, m.schema_id) for m in meta_inputs}
+    meta_schemas = program_meta.get_schemas_by_id(db, (m.schema_id for m in meta_inputs))
 
     results = []
     imported = 0
@@ -96,15 +83,7 @@ def bulk_import(db: Session, program_id: int, max_devices: int, items: list, met
             db.add(license_)
             db.flush()
 
-            for meta_in in meta_inputs:
-                schema = meta_schemas.get(meta_in.schema_id)
-                if schema:
-                    db.add(LicenseMeta(
-                        license_id=license_.id,
-                        schema_id=schema.id,
-                        key=schema.key,
-                        value=meta_in.value,
-                    ))
+            program_meta.add_meta_values(db, license_.id, meta_inputs, meta_schemas)
 
             results.append(BulkImportItemResult(
                 username=item.username,
@@ -199,28 +178,17 @@ def remove_device(db: Session, device: Device) -> None:
     db.commit()
 
 
-_CAST_FN: dict = {
-    "int": int,
-    "float": float,
-    "bool": lambda v: v.lower() in ("true", "1", "yes"),
-    "str": str,
-}
-
-
 # --- Meta operations ---
 
 def set_meta(db: Session, license_id: int, schema_id: int, key: str, value: str) -> LicenseMeta:
-    existing = (
-        db.query(LicenseMeta)
-        .filter(LicenseMeta.license_id == license_id, LicenseMeta.schema_id == schema_id)
-        .first()
-    )
-    if existing:
-        existing.value = value
-        db.commit()
-        return existing
-    meta = LicenseMeta(license_id=license_id, schema_id=schema_id, key=key, value=value)
-    db.add(meta)
+    from app.models.program import ProgramMetaSchema
+
+    schema = db.get(ProgramMetaSchema, schema_id)
+    if schema is None:
+        meta = LicenseMeta(license_id=license_id, schema_id=schema_id, key=key, value=value)
+        db.add(meta)
+    else:
+        meta = program_meta.set_meta_value(db, license_id, schema, value, key)
     db.commit()
     db.refresh(meta)
     return meta
@@ -236,11 +204,5 @@ def bulk_update_meta(db: Session, license_: License, updates: list) -> None:
             raise ValueError(f"Schema {item.schema_id}를 찾을 수 없습니다.")
         if schema.program_id != license_.program_id:
             raise ValueError(f"Schema {item.schema_id}는 이 라이선스 프로그램에 속하지 않습니다.")
-        cast_fn = _CAST_FN.get(schema.value_type, str)
-        try:
-            cast_fn(item.value)
-        except (ValueError, TypeError):
-            raise ValueError(
-                f"'{item.value}'을 {schema.value_type}로 변환할 수 없습니다. (key: {schema.key})"
-            )
+        program_meta.validate_value(item.value, schema)
         set_meta(db, license_.id, schema.id, schema.key, item.value)

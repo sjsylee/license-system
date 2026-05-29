@@ -6,11 +6,7 @@ import type { TableProps } from "antd";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import EmptyLottie from "@/components/EmptyLottie";
-import {
-  getRegisteredDashboardDevices,
-  loadDashboardLicenses,
-  type DashboardDevice,
-} from "@/lib/admin-dashboard";
+import { loadAdminDashboardReadModel, type DashboardDevice } from "@/lib/admin-dashboard";
 import { formatKST, parseBackendDate } from "@/lib/utils";
 
 const { Title, Text } = Typography;
@@ -35,8 +31,8 @@ export default function RegisteredDevicesPage() {
     async function load() {
       setLoading(true);
       try {
-        const dashboardLicenses = await loadDashboardLicenses();
-        setDevices(getRegisteredDashboardDevices(dashboardLicenses));
+        const dashboard = await loadAdminDashboardReadModel();
+        setDevices(dashboard.registeredDevices);
       } catch (error) {
         message.error(error instanceof Error ? error.message : "등록 기기 목록을 불러오지 못했습니다.");
       } finally {

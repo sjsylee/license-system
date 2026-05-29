@@ -2,9 +2,10 @@
 
 import { CheckCircleOutlined, CloseCircleOutlined, ImportOutlined } from "@ant-design/icons";
 import {
-  Alert, App, Button, Card, Col, Divider, Form, Input, InputNumber,
+  Alert, App, Button, Card, Col, Divider, Input, InputNumber,
   Row, Select, Space, Table, Tag, Typography, theme,
 } from "antd";
+import type { TableProps } from "antd";
 import { useEffect, useState } from "react";
 import {
   licenseApi, programApi,
@@ -20,6 +21,10 @@ interface LegacyUser {
   id: string;
   secretKey: string;
   expiry: number;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "요청 처리 중 오류가 발생했습니다.";
 }
 
 function parseLegacyJson(raw: string): { items: BulkLicenseItem[]; error: string | null } {
@@ -99,8 +104,8 @@ export default function MigratePage() {
     try {
       const res = await licenseApi.bulkImport(selectedProgram.id, maxDevices, preview, meta);
       setResult(res);
-    } catch (e: any) {
-      message.error(e.message);
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error));
     } finally {
       setImporting(false);
     }
@@ -143,7 +148,7 @@ export default function MigratePage() {
     },
   ];
 
-  const resultColumns = [
+  const resultColumns: TableProps<BulkImportItemResult>["columns"] = [
     {
       title: "사용자",
       dataIndex: "username",
@@ -161,7 +166,7 @@ export default function MigratePage() {
     {
       title: "결과",
       key: "success",
-      render: (_: any, r: BulkImportItemResult) =>
+      render: (_value: unknown, r: BulkImportItemResult) =>
         r.success ? (
           <Space size={4}>
             <CheckCircleOutlined style={{ color: "#00B448" }} />

@@ -10,13 +10,22 @@ import {
   Modal, Popconfirm, Row, Select, Space, Switch, Table, Tag,
   Tooltip, Typography, theme,
 } from "antd";
-import dayjs, { type Dayjs } from "dayjs";
+import type { TableProps } from "antd";
+import dayjs from "dayjs";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import EmptyLottie from "@/components/EmptyLottie";
-import { licenseApi, programApi, type License, type Program } from "@/lib/api";
-import { daysUntil, formatKST, parseBackendDate } from "@/lib/utils";
+import type { License } from "@/lib/api";
+import {
+  getLicenseExpiryStatus,
+  getLicenseStatus,
+} from "@/lib/license-status";
+import {
+  QUICK_DATES,
+  type FilterKey,
+  useProgramLicenseWorkspace,
+} from "@/lib/program-license-workspace";
+import { formatKST } from "@/lib/utils";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 
@@ -24,55 +33,37 @@ const { Title, Text } = Typography;
 
 const GITHUB_OWNER = process.env.NEXT_PUBLIC_GITHUB_OWNER ?? "";
 
-const QUICK_DATES = [
-  { label: "1주일", amount: 7, unit: "day" as const },
-  { label: "1개월", amount: 1, unit: "month" as const },
-  { label: "3개월", amount: 3, unit: "month" as const },
-  { label: "6개월", amount: 6, unit: "month" as const },
-];
-
 const noWrap = { style: { whiteSpace: "nowrap" as const } };
 
-type FilterKey = "all" | "active" | "inactive" | "expired";
-type QuickDateUnit = (typeof QUICK_DATES)[number]["unit"];
-type ExtendFormValues = {
-  extends_at: Dayjs | null;
-};
-
-function isExpired(license: License) {
-  if (!license.expires_at) return false;
-  const expiresAt = parseBackendDate(license.expires_at);
-  if (!expiresAt) return false;
-  return dayjs(expiresAt).isBefore(dayjs());
-}
-
 function RemainingDays({ expiresAt }: { expiresAt: string | null }) {
-  if (!expiresAt) return <Tag color="blue" style={{ margin: 0 }}>무기한</Tag>;
+  const status = getLicenseExpiryStatus(expiresAt);
 
-  const expiresDate = parseBackendDate(expiresAt);
-  if (!expiresDate) {
+  if (status.kind === "permanent") return <Tag color="blue" style={{ margin: 0 }}>무기한</Tag>;
+
+  if (status.kind === "invalid") {
     return <Text type="secondary" style={{ fontSize: 12, whiteSpace: "nowrap" }}>-</Text>;
   }
 
-  const diff = daysUntil(expiresAt);
-  if (dayjs(expiresDate).isBefore(dayjs())) {
+  if (status.kind === "expired") {
     return <Text type="danger" style={{ fontSize: 12, whiteSpace: "nowrap" }}>만료됨</Text>;
   }
-  if (diff === 0) {
+  if (status.kind === "today") {
     return (
       <Space size={4} orientation="vertical" style={{ lineHeight: 1.3 }}>
-        <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>{formatKST(expiresAt)}</Text>
+        <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>{status.formattedDate}</Text>
         <Text type="danger" style={{ fontSize: 11, whiteSpace: "nowrap" }}>오늘 만료</Text>
       </Space>
     );
   }
+
+  const daysUntilExpiry = status.daysUntilExpiry ?? 0;
   return (
     <Space size={4} orientation="vertical" style={{ lineHeight: 1.3 }}>
-      <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>{formatKST(expiresAt)}</Text>
+      <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>{status.formattedDate}</Text>
       <Text type="secondary" style={{ fontSize: 11, whiteSpace: "nowrap" }}>
-        {diff <= 30
-          ? <span style={{ color: diff <= 7 ? "#ff4d4f" : "#fa8c16" }}>D-{diff}</span>
-          : `${diff}일 남음`}
+        {status.kind === "soon"
+          ? <span style={{ color: daysUntilExpiry <= 7 ? "#ff4d4f" : "#fa8c16" }}>D-{daysUntilExpiry}</span>
+          : `${daysUntilExpiry}일 남음`}
       </Text>
     </Space>
   );
@@ -84,264 +75,61 @@ export default function ProgramDetailPage() {
   const { token } = theme.useToken();
   const { message } = App.useApp();
   const programId = Number(id);
+  const {
+    program,
+    loading,
+    createOpen,
+    detailLicense,
+    submitting,
+    filterKey,
+    searchQuery,
+    extendTarget,
+    isMobile,
+    editingMaxDevices,
+    contactTarget,
+    sortKey,
+    metaTarget,
+    form,
+    extendForm,
+    contactForm,
+    metaForm,
+    stats,
+    filtered,
+    load,
+    setCreateOpen,
+    setFilterKey,
+    setSearchQuery,
+    setEditingMaxDevices,
+    setSortKey,
+    handleCreate,
+    handleToggleActive,
+    handleDelete,
+    handleUpdateMaxDevices,
+    handleExtend,
+    handleUpdateContact,
+    handleRemoveDevice,
+    handleUpdateMeta,
+    copyKey,
+    setQuickDate,
+    openExtendModal,
+    closeExtendModal,
+    resetExtendDate,
+    addExtendQuickDate,
+    openContactModal,
+    closeContactModal,
+    openDetailModal,
+    closeDetailModal,
+    openMetaModal,
+    closeMetaModal,
+  } = useProgramLicenseWorkspace({
+    programId,
+    notify: {
+      success: message.success,
+      error: message.error,
+    },
+  });
 
-  const [program, setProgram] = useState<Program | null>(null);
-  const [licenses, setLicenses] = useState<License[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [detailLicense, setDetailLicense] = useState<License | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [filterKey, setFilterKey] = useState<FilterKey>("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [extendTarget, setExtendTarget] = useState<License | null>(null);
-  const [extendInitialBase, setExtendInitialBase] = useState<Dayjs | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
-  const [editingMaxDevices, setEditingMaxDevices] = useState<number | null>(null);
-  const [contactTarget, setContactTarget] = useState<License | null>(null);
-  const [sortKey, setSortKey] = useState<"newest" | "expiry_asc">("newest");
-  const [metaTarget, setMetaTarget] = useState<License | null>(null);
-  const [form] = Form.useForm();
-  const [extendForm] = Form.useForm<ExtendFormValues>();
-  const [contactForm] = Form.useForm();
-  const [metaForm] = Form.useForm();
-
-  async function load() {
-    try {
-      const [prog, lics] = await Promise.all([
-        programApi.get(programId),
-        licenseApi.list(programId),
-      ]);
-      setProgram(prog);
-      setLicenses(lics);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); }, [programId]);
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-
-  const stats = useMemo(() => ({
-    all: licenses.length,
-    active: licenses.filter((l) => l.is_active && !isExpired(l)).length,
-    inactive: licenses.filter((l) => !l.is_active).length,
-    expired: licenses.filter(isExpired).length,
-  }), [licenses]);
-
-  const filtered = useMemo(() => {
-    let base = licenses;
-    if (filterKey === "active") base = licenses.filter((l) => l.is_active && !isExpired(l));
-    else if (filterKey === "inactive") base = licenses.filter((l) => !l.is_active);
-    else if (filterKey === "expired") base = licenses.filter(isExpired);
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      base = base.filter((l) => l.username.toLowerCase().includes(q));
-    }
-    return [...base].sort((a, b) => {
-      if (sortKey === "newest") {
-        const bTime = parseBackendDate(b.created_at)?.getTime() ?? 0;
-        const aTime = parseBackendDate(a.created_at)?.getTime() ?? 0;
-        return bTime - aTime;
-      }
-      // expiry_asc: 무기한은 맨 뒤, 만료일 짧은 순
-      if (!a.expires_at && !b.expires_at) return 0;
-      if (!a.expires_at) return 1;
-      if (!b.expires_at) return -1;
-      const aTime = parseBackendDate(a.expires_at)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-      const bTime = parseBackendDate(b.expires_at)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-      return aTime - bTime;
-    });
-  }, [licenses, filterKey, searchQuery, sortKey]);
-
-  async function handleCreate(values: any) {
-    setSubmitting(true);
-    try {
-      const meta = program?.meta_schemas.map((s) => ({
-        schema_id: s.id,
-        value: String(values[`meta_${s.id}`] ?? s.default_value ?? ""),
-      })).filter((m) => m.value !== "");
-
-      await licenseApi.create({
-        program_id: programId,
-        username: values.username,
-        expires_at: values.expires_at
-          ? dayjs(values.expires_at).toISOString()
-          : null,
-        max_devices: values.max_devices ?? 3,
-        meta,
-        user_id: values.user_id || null,
-        email: values.email || null,
-        phone: values.phone || null,
-      });
-      message.success("라이선스가 발급되었습니다.");
-      setCreateOpen(false);
-      form.resetFields();
-      load();
-    } catch (e: any) {
-      message.error(e.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleToggleActive(license: License) {
-    try {
-      await licenseApi.update(license.id, { is_active: !license.is_active });
-      load();
-    } catch (e: any) {
-      message.error(e.message);
-    }
-  }
-
-  async function handleDelete(id: number) {
-    try {
-      await licenseApi.delete(id);
-      message.success("삭제되었습니다.");
-      load();
-    } catch (e: any) {
-      message.error(e.message);
-    }
-  }
-
-  async function handleUpdateMaxDevices() {
-    if (!detailLicense || editingMaxDevices === null) return;
-    try {
-      await licenseApi.update(detailLicense.id, { max_devices: editingMaxDevices });
-      setDetailLicense({ ...detailLicense, max_devices: editingMaxDevices });
-      setEditingMaxDevices(null);
-      load();
-      message.success("허용 기기 수가 변경되었습니다.");
-    } catch (e: any) {
-      message.error(e.message);
-    }
-  }
-
-  async function handleExtend(values: ExtendFormValues) {
-    if (!extendTarget) return;
-    setSubmitting(true);
-    try {
-      await licenseApi.update(extendTarget.id, {
-        expires_at: values.extends_at ? dayjs(values.extends_at).toISOString() : null,
-      });
-      message.success("만료일이 연장되었습니다.");
-      closeExtendModal();
-      load();
-    } catch (e: any) {
-      message.error(e.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleUpdateContact(values: any) {
-    if (!contactTarget) return;
-    setSubmitting(true);
-    try {
-      await licenseApi.update(contactTarget.id, {
-        user_id: values.user_id || null,
-        email: values.email || null,
-        phone: values.phone || null,
-      });
-      message.success("연락처가 수정되었습니다.");
-      setContactTarget(null);
-      contactForm.resetFields();
-      load();
-    } catch (e: any) {
-      message.error(e.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleRemoveDevice(licenseId: number, hwid: string) {
-    try {
-      await licenseApi.removeDevice(licenseId, hwid);
-      message.success("기기 등록이 해제되었습니다.");
-      if (detailLicense) {
-        const updated = await licenseApi.get(licenseId);
-        setDetailLicense(updated);
-        load();
-      }
-    } catch (e: any) {
-      message.error(e.message);
-    }
-  }
-
-  async function handleUpdateMeta(values: Record<string, string | number | null>) {
-    if (!metaTarget || !program) return;
-    setSubmitting(true);
-    try {
-      const updates = program.meta_schemas
-        .filter((s) => values[`meta_${s.id}`] != null)
-        .map((s) => ({
-          schema_id: s.id,
-          value: String(values[`meta_${s.id}`]),
-        }));
-      const updated = await licenseApi.updateMeta(metaTarget.id, updates);
-      setLicenses((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
-      message.success("메타 데이터가 수정되었습니다.");
-      setMetaTarget(null);
-      metaForm.resetFields();
-    } catch (e: any) {
-      message.error(e.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  function copyKey(key: string) {
-    navigator.clipboard.writeText(key);
-    message.success("복사되었습니다.");
-  }
-
-  function setQuickDate(amount: number, unit: "day" | "month") {
-    form.setFieldValue("expires_at", dayjs().add(amount, unit));
-  }
-
-  function getExtendBaseDate(license: License) {
-    const expiresAt = license.expires_at ? dayjs(license.expires_at) : null;
-
-    if (expiresAt && expiresAt.isAfter(dayjs())) {
-      return expiresAt;
-    }
-
-    return dayjs();
-  }
-
-  function openExtendModal(license: License) {
-    const base = getExtendBaseDate(license);
-    setExtendTarget(license);
-    setExtendInitialBase(base);
-    extendForm.setFieldValue("extends_at", base);
-  }
-
-  function closeExtendModal() {
-    setExtendTarget(null);
-    setExtendInitialBase(null);
-    extendForm.resetFields();
-  }
-
-  function resetExtendDate() {
-    if (!extendInitialBase) return;
-    extendForm.setFieldValue("extends_at", extendInitialBase);
-  }
-
-  function addExtendQuickDate(amount: number, unit: QuickDateUnit) {
-    const currentValue = extendForm.getFieldValue("extends_at");
-    const base = dayjs.isDayjs(currentValue)
-      ? currentValue
-      : extendInitialBase ?? (extendTarget ? getExtendBaseDate(extendTarget) : dayjs());
-
-    extendForm.setFieldValue("extends_at", base.add(amount, unit));
-  }
-
-  const columns = [
+  const columns: TableProps<License>["columns"] = [
     {
       title: "사용자",
       dataIndex: "username",
@@ -399,7 +187,7 @@ export default function ProgramDetailPage() {
       dataIndex: "expires_at",
       key: "expires_at",
       width: 110,
-      responsive: ["md"] as any,
+      responsive: ["md"],
       onHeaderCell: () => noWrap,
       render: (v: string | null) => <RemainingDays expiresAt={v} />,
     },
@@ -407,10 +195,10 @@ export default function ProgramDetailPage() {
       title: "기기",
       key: "devices",
       width: 64,
-      responsive: ["sm"] as any,
+      responsive: ["sm"],
       onCell: () => noWrap,
       onHeaderCell: () => noWrap,
-      render: (_: any, r: License) => (
+      render: (_value: unknown, r: License) => (
         <Text style={{ fontSize: 13, whiteSpace: "nowrap" }}>
           {r.devices.length}/{r.max_devices}
         </Text>
@@ -421,15 +209,15 @@ export default function ProgramDetailPage() {
       key: "is_active",
       width: 60,
       onHeaderCell: () => noWrap,
-      render: (_: any, r: License) => {
-        const expired = isExpired(r);
+      render: (_value: unknown, r: License) => {
+        const status = getLicenseStatus(r);
         return (
-          <Tooltip title={expired ? "만료된 라이선스입니다. 만료일 연장 후 활성화 가능합니다." : undefined}>
+          <Tooltip title={status.isExpired ? "만료된 라이선스입니다. 만료일 연장 후 활성화 가능합니다." : undefined}>
             <Switch
-              checked={r.is_active && !expired}
+              checked={status.isUsable}
               onChange={() => handleToggleActive(r)}
               size="small"
-              disabled={expired}
+              disabled={status.isExpired}
             />
           </Tooltip>
         );
@@ -439,16 +227,13 @@ export default function ProgramDetailPage() {
       title: "",
       key: "actions",
       width: 112,
-      render: (_: any, r: License) => (
+      render: (_value: unknown, r: License) => (
         <Space size={4}>
           <Tooltip title="연락처 수정">
             <Button
               type="text"
               icon={<EditOutlined />}
-              onClick={() => {
-                setContactTarget(r);
-                contactForm.setFieldsValue({ user_id: r.user_id ?? "", email: r.email ?? "", phone: r.phone ?? "" });
-              }}
+              onClick={() => openContactModal(r)}
               style={{ width: 32, height: 32, padding: 0 }}
             />
           </Tooltip>
@@ -463,7 +248,7 @@ export default function ProgramDetailPage() {
           <Button
             type="text"
             icon={<LaptopOutlined />}
-            onClick={() => setDetailLicense(r)}
+            onClick={() => openDetailModal(r)}
             style={{ width: 32, height: 32, padding: 0 }}
           />
           {(program?.meta_schemas.length ?? 0) > 0 && (
@@ -471,15 +256,7 @@ export default function ProgramDetailPage() {
               <Button
                 type="text"
                 icon={<TableOutlined />}
-                onClick={() => {
-                  const initialValues: Record<string, string> = {};
-                  program?.meta_schemas.forEach((s) => {
-                    const existing = r.meta.find((m) => m.key === s.key);
-                    initialValues[`meta_${s.id}`] = existing?.value ?? s.default_value ?? "";
-                  });
-                  metaForm.setFieldsValue(initialValues);
-                  setMetaTarget(r);
-                }}
+                onClick={() => openMetaModal(r)}
                 style={{ width: 32, height: 32, padding: 0 }}
               />
             </Tooltip>
@@ -498,11 +275,11 @@ export default function ProgramDetailPage() {
     },
   ];
 
-  const mobileColumns = [
+  const mobileColumns: TableProps<License>["columns"] = [
     {
       key: "info",
-      render: (_: any, r: License) => {
-        const expired = isExpired(r);
+      render: (_value: unknown, r: License) => {
+        const status = getLicenseStatus(r);
         return (
           <div style={{ padding: "4px 0" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -516,12 +293,12 @@ export default function ProgramDetailPage() {
                   </div>
                 )}
               </div>
-              <Tooltip title={expired ? "만료된 라이선스입니다. 만료일 연장 후 활성화 가능합니다." : undefined}>
+              <Tooltip title={status.isExpired ? "만료된 라이선스입니다. 만료일 연장 후 활성화 가능합니다." : undefined}>
                 <Switch
-                  checked={r.is_active && !expired}
+                  checked={status.isUsable}
                   onChange={() => handleToggleActive(r)}
                   size="small"
-                  disabled={expired}
+                  disabled={status.isExpired}
                 />
               </Tooltip>
             </div>
@@ -538,7 +315,7 @@ export default function ProgramDetailPage() {
                 <Tooltip title="연락처 수정">
                   <Button
                     type="text" icon={<EditOutlined />}
-                    onClick={() => { setContactTarget(r); contactForm.setFieldsValue({ user_id: r.user_id ?? "", email: r.email ?? "", phone: r.phone ?? "" }); }}
+                    onClick={() => openContactModal(r)}
                     style={{ width: 36, height: 36, padding: 0 }}
                   />
                 </Tooltip>
@@ -549,20 +326,12 @@ export default function ProgramDetailPage() {
                     style={{ width: 36, height: 36, padding: 0 }}
                   />
                 </Tooltip>
-                <Button type="text" icon={<LaptopOutlined />} onClick={() => setDetailLicense(r)} style={{ width: 36, height: 36, padding: 0 }} />
+                <Button type="text" icon={<LaptopOutlined />} onClick={() => openDetailModal(r)} style={{ width: 36, height: 36, padding: 0 }} />
                 {(program?.meta_schemas.length ?? 0) > 0 && (
                   <Button
                     type="text"
                     icon={<TableOutlined />}
-                    onClick={() => {
-                      const initialValues: Record<string, string> = {};
-                      program?.meta_schemas.forEach((s) => {
-                        const existing = r.meta.find((m) => m.key === s.key);
-                        initialValues[`meta_${s.id}`] = existing?.value ?? s.default_value ?? "";
-                      });
-                      metaForm.setFieldsValue(initialValues);
-                      setMetaTarget(r);
-                    }}
+                    onClick={() => openMetaModal(r)}
                     style={{ width: 36, height: 36, padding: 0 }}
                   />
                 )}
@@ -948,7 +717,7 @@ export default function ProgramDetailPage() {
           </span>
         }
         open={contactTarget !== null}
-        onCancel={() => { setContactTarget(null); contactForm.resetFields(); }}
+        onCancel={closeContactModal}
         footer={null}
         width={420}
       >
@@ -963,7 +732,7 @@ export default function ProgramDetailPage() {
             <Input placeholder="010-0000-0000 (선택)" prefix={<PhoneOutlined style={{ color: token.colorTextSecondary }} />} allowClear />
           </Form.Item>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button onClick={() => { setContactTarget(null); contactForm.resetFields(); }}>취소</Button>
+            <Button onClick={closeContactModal}>취소</Button>
             <Button type="primary" htmlType="submit" loading={submitting} style={{ fontWeight: 600 }}>
               저장
             </Button>
@@ -982,7 +751,7 @@ export default function ProgramDetailPage() {
           </span>
         }
         open={detailLicense !== null}
-        onCancel={() => { setDetailLicense(null); setEditingMaxDevices(null); }}
+        onCancel={closeDetailModal}
         footer={null}
         width={540}
       >
@@ -1074,7 +843,7 @@ export default function ProgramDetailPage() {
           </span>
         }
         open={metaTarget !== null}
-        onCancel={() => { setMetaTarget(null); metaForm.resetFields(); }}
+        onCancel={closeMetaModal}
         footer={null}
         width={440}
       >
@@ -1112,7 +881,7 @@ export default function ProgramDetailPage() {
               </Form.Item>
             ))}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-              <Button onClick={() => { setMetaTarget(null); metaForm.resetFields(); }}>취소</Button>
+              <Button onClick={closeMetaModal}>취소</Button>
               <Button type="primary" htmlType="submit" loading={submitting} style={{ fontWeight: 600 }}>
                 저장
               </Button>

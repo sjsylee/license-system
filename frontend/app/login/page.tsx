@@ -7,7 +7,7 @@ import { useTheme } from "next-themes";
 import { authApi } from "@/lib/api";
 import { setAccessToken } from "@/lib/auth";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 export default function LoginPage() {
   const router = useRouter();

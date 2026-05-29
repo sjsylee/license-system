@@ -2,7 +2,7 @@
 
 import { Tooltip } from "antd";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 const SPRING = "cubic-bezier(0.34, 1.56, 0.64, 1)";
 const EASE_OUT = "cubic-bezier(0.25, 0.46, 0.45, 0.94)";
@@ -42,10 +42,12 @@ function MoonIcon() {
 
 export default function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const [hovered, setHovered] = useState(false);
-
-  useEffect(() => { setMounted(true); }, []);
 
   if (!mounted) return <div style={{ width: 36, height: 36 }} />;
 

@@ -33,6 +33,10 @@ const VALUE_TYPE_COLORS: Record<MetaValueType, string> = {
   bool: "orange",
 };
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "요청 처리 중 오류가 발생했습니다.";
+}
+
 export default function ProgramsPage() {
   const router = useRouter();
   const { token } = theme.useToken();
@@ -85,8 +89,8 @@ export default function ProgramsPage() {
       setCreateImageFile(null);
       setCreateImagePreview(null);
       load();
-    } catch (e: any) {
-      message.error(e.message);
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
@@ -100,8 +104,8 @@ export default function ProgramsPage() {
       setDeleteTarget(null);
       setDeleteConfirmText("");
       load();
-    } catch (e: any) {
-      message.error(e.message);
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error));
     }
   }
 
@@ -134,8 +138,8 @@ export default function ProgramsPage() {
       schemaForm.resetFields();
       setBackfillStrategy("skip");
       load();
-    } catch (e: any) {
-      message.error(e.message);
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
@@ -146,8 +150,8 @@ export default function ProgramsPage() {
       await programApi.deleteMetaSchema(schemaId);
       message.success("삭제되었습니다.");
       load();
-    } catch (e: any) {
-      message.error(e.message);
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error));
     }
   }
 
@@ -156,8 +160,8 @@ export default function ProgramsPage() {
       const updated = await programApi.uploadImage(programId, file);
       setPrograms((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       message.success("이미지가 업데이트되었습니다.");
-    } catch (e: any) {
-      message.error(e.message);
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error));
     }
   }
 
@@ -604,7 +608,7 @@ export default function ProgramsPage() {
         {deleteTarget && (
           <div style={{ marginTop: 8 }}>
             <p style={{ marginBottom: 16, lineHeight: 1.7 }}>
-              <Text type="danger" strong>"{deleteTarget.name}"</Text>을(를) 삭제하면{" "}
+              <Text type="danger" strong>&quot;{deleteTarget.name}&quot;</Text>을(를) 삭제하면{" "}
               <Text strong>모든 라이선스와 기기 데이터</Text>가 영구 삭제됩니다.<br />
               확인하려면 프로그램 이름을 정확히 입력하세요.
             </p>

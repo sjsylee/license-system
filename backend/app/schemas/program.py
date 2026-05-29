@@ -3,14 +3,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-MetaValueType = Literal["int", "str", "bool", "float"]
+from app.domain.program_meta import validate_backfill_value
 
-_CAST_FN: dict = {
-    "int": int,
-    "float": float,
-    "bool": lambda v: v.lower() in ("true", "1", "yes"),
-    "str": str,
-}
+MetaValueType = Literal["int", "str", "bool", "float"]
 
 
 class ProgramMetaSchemaCreate(BaseModel):
@@ -29,13 +24,7 @@ class ProgramMetaSchemaCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_backfill_castable(self) -> "ProgramMetaSchemaCreate":
-        if self.backfill_value:  # non-empty string only
-            try:
-                _CAST_FN[self.value_type](self.backfill_value)
-            except (ValueError, TypeError):
-                raise ValueError(
-                    f"backfill_value '{self.backfill_value}'을 {self.value_type}로 변환할 수 없습니다."
-                )
+        validate_backfill_value(self.backfill_value, self.value_type)
         return self
 
 
