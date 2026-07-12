@@ -13,6 +13,33 @@
 
 ---
 
+## 🎯 Problem / 문제인식
+
+Electron 데스크톱 앱을 배포하는 벤더로서, 초기에는 **Cloudflare KV**에 `{id, secretKey, expiry}` 형태로 사용자를 하나씩 넣어 라이선스를 검증했습니다. 사용자가 **50명을 넘어가면서** 단일 JSON을 손으로 관리하는 방식이 한계에 부딪혔습니다. flat key-value 구조라서 ― (1) **프로그램(제품) 구분이 없어** 한 사용자가 여러 제품을 쓰면 관리할 수 없고, (2) **키당 기기 수 제한**이 불가능하며(HWID 개념 부재), (3) **제품별 메타데이터**를 검증 응답에 실을 수 없고, (4) `expiry`가 raw timestamp라 발급할 때마다 **수기 계산**이 필요했습니다. 게다가 검증 API는 앱 시작 시 호출되므로 **무인증 공개**여야 하고, 그 자체가 가장 큰 공격 표면이었습니다.
+
+As a vendor shipping Electron desktop apps, I initially validated licenses by hand-entering users as `{id, secretKey, expiry}` into **Cloudflare KV**. Past **50+ users**, managing a single JSON by hand hit a wall: a flat key-value store meant (1) no notion of a *program/product*, so one user across multiple products was unmanageable, (2) no per-key device limits (no HWID), (3) no per-product metadata in the validation response, and (4) `expiry` as a raw timestamp forced manual date math on every issue. On top of that, the validation API is called at app startup, so it must be **public (no auth)** — the single largest attack surface.
+
+---
+
+## 💡 Approach / 접근·의사결정
+
+KV의 flat 구조로는 위 네 가지를 근본적으로 풀 수 없다고 판단해, **프로그램(제품) → 라이선스 → 기기**의 3계층 관계형 모델로 **전면 재설계했습니다.**
+
+- **프로그램 단위 키 관리** — 제품별로 라이선스를 발급·격리합니다 (`models/program.py`, `license.py`)
+- **키당 기기 제한** — HWID 지문으로 활성 기기를 등록·제한하고, 한도 내에서 자동 등록합니다 (`domain/device_activation.py`)
+- **프로그램별 메타 스키마** — 제품마다 커스텀 변수를 정의해 검증 응답에 주입합니다 (`domain/program_meta.py`)
+- **무손실 이관** — 기존 KV 데이터를 버리지 않고, legacy JSON을 **행 단위 성공/실패 리포트**로 검증하며 새 스키마로 이관합니다 (`app/admin/migrate`)
+- **데이터 밀도 높은 어드민 UI** — 대시보드·프로그램 워크스페이스의 상태·파생 로직을 `lib` 레이어로 분리해 관리합니다 (React · Next.js · TypeScript · Ant Design)
+- **공개 엔드포인트 방어** — 검증 API를 always-200으로 설계하고, error_code 축소·다차원 rate limit·nginx 하드닝으로 공격 표면을 좁혔습니다
+
+이 저장소의 대표 테마는 **보안·운영 신뢰성**입니다. 빠르게 훑고 싶다면 대표 의사결정 2개부터 보세요: [always-200 검증 API 설계](#2-라이선스-검증-api가-항상-http-200을-반환하도록-설계한-이유) · [Cloudflare Tunnel 중복 커넥터 502](#6-cloudflare-tunnel-커넥터-중복으로-인한-502).
+
+Judging that a flat KV store could never solve those four issues, I **redesigned** the system around a three-tier relational model: **Program (product) → License → Device**. Program-scoped keys, HWID-based per-key device limits, per-program meta schemas injected into the validation response, and a lossless migration path from legacy KV JSON (imported with a row-by-row success/failure report). The public validation endpoint is hardened with an always-200 protocol, reduced error codes, multi-dimensional rate limits, and nginx-level controls. The flagship theme of this repo is **security & operational reliability**.
+
+> 🤖 이 저장소는 `AGENTS.md` / `CLAUDE.md`로 AI 코딩 에이전트(Claude Code · Codex) 협업 규칙을 명시하고, 아키텍처·보안 결정과 검증은 직접 주도했습니다.
+
+---
+
 ## 🗂️ Overview / 개요
 
 LicenseOS is a full-stack license management platform designed for software vendors who distribute Electron-based desktop applications. It provides a secure admin console for issuing license keys and a public validation API that desktop apps call at startup.
@@ -29,6 +56,9 @@ LicenseOS is a full-stack license management platform designed for software vend
 - **Dual Token authentication** — Access Token + Refresh Token with automatic rotation; Refresh Token stored in `httpOnly` cookie
 - **Contact info on licenses** — Optional `user_id`, `email`, `phone` fields for post-sale support
 - **Always-200 validation protocol** — Validation endpoint always returns HTTP 200; errors are conveyed via `valid: false` + `error_code` to prevent desktop apps from crashing on unexpected status codes
+- **Data-dense admin console** — Dashboard (active / expiring-soon / recently-seen device views) plus a per-program workspace, with derivation logic split into a `lib` layer instead of a global state store
+- **Legacy KV migration** — Import legacy Cloudflare KV JSON into the new schema with per-row success/failure reporting
+- **GitHub Release link** — Jump from each program page straight to that product's GitHub Release page, unifying the issue → distribute flow
 
 ---
 
@@ -173,6 +203,75 @@ It always returns **HTTP 200** to prevent desktop app crashes, communicating err
 
 ---
 
+## 🔐 Security Hardening / 보안 강화
+
+최근 운영 중인 서비스의 공격 표면을 줄이기 위해, 인증/검증/에러 노출 영역을 중심으로 몇 가지 보안 하드닝을 적용했습니다.
+
+### 1. Admin login brute-force 대응
+
+- `POST /auth/login`에 경량 in-memory rate limit을 추가했습니다.
+- 현재는 단일 VM 환경을 고려해 Redis 없이 동작하며, 다음 세 가지 기준을 함께 봅니다.
+  - IP 기준: `20회 / 5분`
+  - username 기준: `10회 / 10분`
+  - IP+username 기준: `8회 / 10분`
+- 목적은 무차별 대입(brute force)과 credential stuffing의 성공 확률을 낮추는 것입니다.
+
+### 2. Public validate abuse control
+
+- `POST /v1/validate`는 Electron 앱 시작 시 호출되는 공개 엔드포인트이므로, 인증 없이 접근 가능하다는 점이 가장 큰 abuse surface였습니다.
+- 여기에 다음 기준의 abuse control을 추가했습니다.
+  - IP 기준: `120회 / 1분`
+  - license key 기준: `30회 / 1분`
+  - IP+license key 기준: `20회 / 1분`
+- 정상 사용자를 불필요하게 막지 않도록 **성공 요청은 예산을 소모하지 않고**, 유효하지 않은 검증 요청만 카운트합니다.
+
+### 3. Validate error code 축소
+
+- 원래 validate API는 `program_not_found`, `license_not_found`, `program_mismatch`, `license_inactive`, `license_expired`처럼 내부 상태를 비교적 자세히 드러냈습니다.
+- 이 구조는 라이선스 존재 여부나 프로그램 매칭 상태를 추측하는 데 도움을 줄 수 있어, 외부 공개 error code를 다음처럼 축소했습니다.
+  - `invalid_license`
+  - `license_unusable`
+  - `device_limit_reached`
+  - `rate_limited`
+- 응답 스키마(`valid`, `error_code`, `username`, `expires_at`, `meta`)는 유지하면서, 상태 노출만 줄이는 방향을 택했습니다.
+
+### 4. Bulk import 내부 예외 메시지 노출 제거
+
+- 기존 `bulk_import()`는 예외 발생 시 `error=str(e)`를 그대로 응답에 포함하고 있었습니다.
+- 이 방식은 DB 제약조건명, 내부 컬럼 정보, ORM 예외 메시지 같은 구현 세부사항이 어드민 UI까지 그대로 노출될 수 있다는 문제가 있었습니다.
+- 현재는 예외 유형별로 사용자에게 안전한 메시지만 반환하고, 내부 예외 문자열은 직접 노출하지 않도록 수정했습니다.
+
+### 5. Nginx 프록시 레이어 하드닝
+
+- 앱 레벨 방어만으로는 부족할 수 있어, `nginx/nginx.conf`에도 프록시 레벨 보안 설정을 추가했습니다.
+- 주요 변경 사항은 다음과 같습니다.
+  - `/auth/login`, `/v1/validate`에 대한 IP 기준 rate limit
+  - `client_max_body_size`, `client_body_timeout`, `client_header_timeout` 제한
+  - `keepalive_timeout`, `proxy_*_timeout` 축소
+  - `server_tokens off`, `Referrer-Policy`, `Content-Security-Policy`, `X-Content-Type-Options` 적용
+  - Cloudflare Tunnel 환경에서 실제 클라이언트 IP를 복원하되, `set_real_ip_from`을 private 대역 중심으로 제한
+- 또한 `nginx/**`와 `docker-compose.yml` 변경도 배포 워크플로우가 감지하도록 `backend-deploy.yml`의 path filter를 함께 보강했습니다.
+
+---
+
+## 📈 Result / 성과 · 한계
+
+**성과**
+
+- KV 단일 JSON 수기 관리(50+)에서 **프로그램 / 사용자 / 기기 / 메타로 구조화**했고, 대시보드에서 **만료 임박(D-day) · 최근 접속 기기**를 한눈에 파악하도록 구성해 운영 부담을 낮췄습니다.
+- 기존 KV 데이터를 **행 단위 성공/실패 리포트**로 검증하며 새 스키마로 이관해, 이관 누락 여부를 확인 가능한 형태로 처리했습니다.
+- 공개 validate에 3중 abuse control(IP `120/분` · key `30/분` · IP+key `20/분`)을 적용하고, **성공 요청은 예산을 소모하지 않도록** 설계해 정상 사용자에 대한 영향 없이 무인증 남용만 차단했습니다.
+- 외부 노출 error code를 **5종 → 4종**으로 축소해, 라이선스 / 프로그램 존재 여부를 추측할 수 있는 표면을 제거했습니다.
+- 실운영 중 발생한 502 장애를 **Cloudflare Live logs의 커넥터 컬럼**으로 원인을 규명해 해결했습니다.
+
+**한계 / 다음 단계**
+
+- rate limit이 **in-memory** 기반이라, 다중 VM으로 확장할 경우 Redis 등 공유 스토어가 필요합니다.
+- 스키마 마이그레이션이 SQLAlchemy `create_all` 기반이라 기존 테이블 변경은 수동 `ALTER TABLE`이 필요합니다. 팀 협업 · CI 기반 배포로 확장하면 버전 관리·롤백이 되는 **Alembic** 도입이 다음 단계입니다.
+- GitHub Release는 **링크 연동** 수준이며, 배포본을 자동으로 내려받아 전달하는 구조는 아닙니다.
+
+---
+
 ## 🚀 CI/CD Pipeline / CI/CD 파이프라인
 
 Path-based filtering in GitHub Actions ensures only relevant workflows run, avoiding wasted CI minutes in a monorepo.
@@ -255,57 +354,6 @@ See [`.env.example`](.env.example) for the full list of required environment var
 
 ---
 
-## 🔐 Security Hardening / 보안 강화
-
-최근 운영 중인 서비스의 공격 표면을 줄이기 위해, 인증/검증/에러 노출 영역을 중심으로 몇 가지 보안 하드닝을 적용했습니다.
-
-### 1. Admin login brute-force 대응
-
-- `POST /auth/login`에 경량 in-memory rate limit을 추가했습니다.
-- 현재는 단일 VM 환경을 고려해 Redis 없이 동작하며, 다음 세 가지 기준을 함께 봅니다.
-  - IP 기준: `20회 / 5분`
-  - username 기준: `10회 / 10분`
-  - IP+username 기준: `8회 / 10분`
-- 목적은 무차별 대입(brute force)과 credential stuffing의 성공 확률을 낮추는 것입니다.
-
-### 2. Public validate abuse control
-
-- `POST /v1/validate`는 Electron 앱 시작 시 호출되는 공개 엔드포인트이므로, 인증 없이 접근 가능하다는 점이 가장 큰 abuse surface였습니다.
-- 여기에 다음 기준의 abuse control을 추가했습니다.
-  - IP 기준: `120회 / 1분`
-  - license key 기준: `30회 / 1분`
-  - IP+license key 기준: `20회 / 1분`
-- 정상 사용자를 불필요하게 막지 않도록 **성공 요청은 예산을 소모하지 않고**, 유효하지 않은 검증 요청만 카운트합니다.
-
-### 3. Validate error code 축소
-
-- 원래 validate API는 `program_not_found`, `license_not_found`, `program_mismatch`, `license_inactive`, `license_expired`처럼 내부 상태를 비교적 자세히 드러냈습니다.
-- 이 구조는 라이선스 존재 여부나 프로그램 매칭 상태를 추측하는 데 도움을 줄 수 있어, 외부 공개 error code를 다음처럼 축소했습니다.
-  - `invalid_license`
-  - `license_unusable`
-  - `device_limit_reached`
-  - `rate_limited`
-- 응답 스키마(`valid`, `error_code`, `username`, `expires_at`, `meta`)는 유지하면서, 상태 노출만 줄이는 방향을 택했습니다.
-
-### 4. Bulk import 내부 예외 메시지 노출 제거
-
-- 기존 `bulk_import()`는 예외 발생 시 `error=str(e)`를 그대로 응답에 포함하고 있었습니다.
-- 이 방식은 DB 제약조건명, 내부 컬럼 정보, ORM 예외 메시지 같은 구현 세부사항이 어드민 UI까지 그대로 노출될 수 있다는 문제가 있었습니다.
-- 현재는 예외 유형별로 사용자에게 안전한 메시지만 반환하고, 내부 예외 문자열은 직접 노출하지 않도록 수정했습니다.
-
-### 5. Nginx 프록시 레이어 하드닝
-
-- 앱 레벨 방어만으로는 부족할 수 있어, `nginx/nginx.conf`에도 프록시 레벨 보안 설정을 추가했습니다.
-- 주요 변경 사항은 다음과 같습니다.
-  - `/auth/login`, `/v1/validate`에 대한 IP 기준 rate limit
-  - `client_max_body_size`, `client_body_timeout`, `client_header_timeout` 제한
-  - `keepalive_timeout`, `proxy_*_timeout` 축소
-  - `server_tokens off`, `Referrer-Policy`, `Content-Security-Policy`, `X-Content-Type-Options` 적용
-  - Cloudflare Tunnel 환경에서 실제 클라이언트 IP를 복원하되, `set_real_ip_from`을 private 대역 중심으로 제한
-- 또한 `nginx/**`와 `docker-compose.yml` 변경도 배포 워크플로우가 감지하도록 `backend-deploy.yml`의 path filter를 함께 보강했습니다.
-
----
-
 ## 💡 개발 노트 / 설계 고찰
 
 실제 개발 과정에서 마주쳤던 문제들과 그에 대한 판단을 기록합니다.
@@ -347,3 +395,16 @@ VM에 배포 후 API 도메인에서 502가 지속 발생하는 문제가 생겼
 원인은 터널 초기 설정 시 Cloudflare Dashboard에서 제공한 `cloudflared tunnel run --token ...` 커맨드를 로컬 맥북 터미널에서 실행했던 것이었습니다. 이로 인해 맥북이 커넥터로 등록된 상태에서 VM에 Docker로 cloudflared를 추가 실행하면서 커넥터가 2개가 됐고, Cloudflare가 맥북 커넥터로 트래픽을 라우팅하면서 502가 발생했습니다.
 
 터널이 `Healthy` 상태여도 커넥터가 여러 개면 의도치 않은 커넥터로 트래픽이 분산될 수 있습니다. Cloudflare Zero Trust의 **Live logs → Connector 컬럼**을 확인하면 어느 커넥터로 요청이 가고 있는지 즉시 파악할 수 있고, 이 방법으로 원인을 특정했습니다.
+
+### 7. 어드민 상태·데이터 흐름 설계 — 컴포넌트에서 파생 로직 분리
+
+프로그램·라이선스·기기 현황을 한 화면에서 다루는 어드민은 필터(활성/만료/비활성), 정렬(최신/만료 임박), 기기 등록 현황, 만료 임박 계산이 얽혀 데이터 밀도가 높았습니다. 이 파생 로직을 각 컴포넌트에 흩어 두면 "이 라이선스가 만료됐는가" 같은 판정이 페이지마다 중복되고, 규칙이 바뀔 때마다 여러 곳을 고쳐야 하는 문제가 있었습니다.
+
+별도의 전역 상태관리 라이브러리를 도입하는 대신, 파생·조회 로직을 `lib/` 레이어로 분리했습니다.
+
+- `lib/license-status.ts` — 라이선스의 활성/만료/만료 임박 판정을 **단일 소스**로 관리 (`getLicenseStatus`, `isLicenseExpiringWithin`)
+- `lib/admin-dashboard.ts` — 대시보드를 **read model**(`AdminDashboardReadModel`)로 정의하고, 원본 라이선스에서 개요·최근 접속·만료 임박을 **순수 셀렉터**로 파생
+- `lib/program-license-workspace.ts` — 프로그램 상세의 필터·정렬·발급/연장/메타 폼 상태를 **`useProgramLicenseWorkspace` 훅**으로 캡슐화
+- `lib/utils.ts` — `parseBackendDate` / `formatKST`로 백엔드 UTC ↔ KST 표시를 한 곳에서 처리
+
+결과적으로 컴포넌트는 **표시**에, `lib`는 **판정·파생**에 집중하게 되어, 라이선스 상태 규칙이 바뀌어도 한 곳만 수정하면 됐습니다. Zustand 같은 전역 스토어 없이도 데이터 밀도 높은 어드민을 유지보수 가능한 수준으로 관리할 수 있었습니다. 유효기간 입력도 legacy의 raw timestamp 수기 계산을 없애고, `QUICK_DATES` 프리셋과 DatePicker로 처리하도록 개선했습니다.
