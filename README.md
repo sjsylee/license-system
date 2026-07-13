@@ -1,7 +1,7 @@
 # LicenseOS
 
-**License issuance and validation system for desktop applications**
 **데스크톱 애플리케이션을 위한 라이선스 발급 및 검증 시스템**
+*License issuance and validation system for desktop applications*
 
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)
@@ -42,23 +42,25 @@ Judging that a flat KV store could never solve those four issues, I **redesigned
 
 ## 🗂️ Overview / 개요
 
-LicenseOS is a full-stack license management platform designed for software vendors who distribute Electron-based desktop applications. It provides a secure admin console for issuing license keys and a public validation API that desktop apps call at startup.
+Electron 기반 데스크톱 앱을 배포하는 소프트웨어 벤더를 위한 풀스택 라이선스 관리 플랫폼입니다. 라이선스 키를 발급하는 보안 어드민 콘솔과, 데스크톱 앱이 시작 시 호출하는 공개 검증 API를 제공합니다.
 
-소프트웨어 배포사를 위한 라이선스 관리 플랫폼입니다. 어드민 콘솔을 통해 라이선스를 발급하고, 데스크톱 앱 시작 시 호출하는 공개 검증 API를 제공합니다.
+*A full-stack license management platform for software vendors distributing Electron-based desktop apps — a secure admin console for issuing keys and a public validation API called at app startup.*
 
 ---
 
 ## ✨ Key Features / 주요 기능
 
-- **Multi-program management** — Manage licenses for multiple software products from a single dashboard
-- **HWID-based device fingerprinting** — Limit activations per license by hardware ID; auto-register new devices up to the allowed count
-- **Flexible meta variables** — Define per-program custom variable schemas (e.g. `max_collection_count`, `feature_x_enabled`) injected into validation responses
-- **Dual Token authentication** — Access Token + Refresh Token with automatic rotation; Refresh Token stored in `httpOnly` cookie
-- **Contact info on licenses** — Optional `user_id`, `email`, `phone` fields for post-sale support
-- **Always-200 validation protocol** — Validation endpoint always returns HTTP 200; errors are conveyed via `valid: false` + `error_code` to prevent desktop apps from crashing on unexpected status codes
-- **Data-dense admin console** — Dashboard (active / expiring-soon / recently-seen device views) plus a per-program workspace, with derivation logic split into a `lib` layer instead of a global state store
-- **Legacy KV migration** — Import legacy Cloudflare KV JSON into the new schema with per-row success/failure reporting
-- **GitHub Release link** — Jump from each program page straight to that product's GitHub Release page, unifying the issue → distribute flow
+| 기능 | 설명 | Description (EN) |
+|---|---|---|
+| **다중 프로그램 관리** | 여러 소프트웨어 제품의 라이선스를 단일 대시보드에서 관리 | Manage licenses for multiple products from one dashboard |
+| **HWID 기기 지문** | 하드웨어 ID로 라이선스당 활성화를 제한하고, 허용 수량까지 신규 기기를 자동 등록 | Per-license activation limits by HWID with auto-registration |
+| **유연한 메타 변수** | 프로그램별 커스텀 변수 스키마(`max_collection_count` 등)를 검증 응답에 주입 | Per-program custom variable schemas injected into responses |
+| **이중 토큰 인증** | Access + Refresh Token 자동 로테이션, Refresh Token은 `httpOnly` 쿠키에 저장 | Access + Refresh token rotation; refresh in `httpOnly` cookie |
+| **라이선스 연락처** | 판매 후 지원을 위한 선택 필드(`user_id`·`email`·`phone`) | Optional contact fields for post-sale support |
+| **Always-200 검증 프로토콜** | 항상 HTTP 200을 반환하고 오류는 `valid: false` + `error_code`로 전달해, 예기치 못한 상태 코드로 데스크톱 앱이 죽지 않게 함 | Always returns HTTP 200; errors via `valid:false` + `error_code` |
+| **데이터 밀도 높은 어드민 콘솔** | 대시보드(활성/만료임박/최근접속)와 프로그램 워크스페이스, 파생 로직을 전역 스토어 대신 `lib` 레이어로 분리 | Data-dense console; derivation split into a `lib` layer |
+| **레거시 KV 마이그레이션** | 레거시 Cloudflare KV JSON을 행 단위 성공/실패 리포트와 함께 새 스키마로 이관 | Import legacy KV JSON with per-row success/failure reporting |
+| **GitHub Release 연결** | 각 프로그램 페이지에서 해당 제품의 GitHub Release로 바로 연결해 발급→배포 동선 일원화 | Link each program page to its GitHub Release page |
 
 ---
 
@@ -136,7 +138,7 @@ graph TB
 
 FastAPI의 자동 생성 Swagger UI를 통해 모든 엔드포인트를 브라우저에서 직접 확인하고 테스트할 수 있습니다.
 
-Interactive API docs are auto-generated via FastAPI's built-in Swagger UI with full request/response schemas and inline descriptions.
+*Interactive API docs are auto-generated via FastAPI's built-in Swagger UI with full request/response schemas and inline descriptions.*
 
 ```
 http://localhost:8001/docs     # Swagger UI
@@ -162,8 +164,9 @@ http://localhost:8001/redoc    # ReDoc
 
 ### Validation API Design
 
-The validate endpoint (`POST /v1/validate`) is the core public-facing API.
-It always returns **HTTP 200** to prevent desktop app crashes, communicating errors via structured body:
+검증 엔드포인트(`POST /v1/validate`)는 이 시스템의 핵심 공개 API입니다. 데스크톱 앱의 크래시를 막기 위해 **항상 HTTP 200**을 반환하고, 오류는 구조화된 응답 본문으로 전달합니다.
+
+*The validate endpoint is the core public-facing API. It always returns **HTTP 200** to prevent desktop-app crashes, conveying errors via a structured body:*
 
 ```json
 // Valid license
@@ -274,9 +277,9 @@ It always returns **HTTP 200** to prevent desktop app crashes, communicating err
 
 ## 🚀 CI/CD Pipeline / CI/CD 파이프라인
 
-Path-based filtering in GitHub Actions ensures only relevant workflows run, avoiding wasted CI minutes in a monorepo.
+GitHub Actions의 경로 기반 필터링으로 변경된 파일에 해당하는 워크플로우만 실행해, 모노레포에서 불필요한 CI 소모를 줄입니다.
 
-변경된 파일 경로를 감지해 필요한 워크플로우만 실행합니다.
+*Path-based filtering in GitHub Actions runs only the relevant workflows, avoiding wasted CI minutes in a monorepo.*
 
 | Workflow | Trigger | Action |
 |----------|---------|--------|
@@ -284,7 +287,7 @@ Path-based filtering in GitHub Actions ensures only relevant workflows run, avoi
 | `backend-ci.yml` | `backend/**` push/PR on any branch | Docker build (no push) — catch Dockerfile/dependency errors |
 | `backend-deploy.yml` | `backend/**` push to `main` only | Build → push to ghcr.io → SSH into VPS → `docker compose pull & up` |
 
-Frontend deployment is handled automatically by **Vercel** on every push to `main`.
+프론트엔드 배포는 `main`에 푸시할 때마다 **Vercel**이 자동으로 처리합니다. / *Frontend deployment is handled automatically by Vercel on every push to `main`.*
 
 ---
 
