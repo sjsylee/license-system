@@ -64,6 +64,28 @@ Electron 기반 데스크톱 앱을 배포하는 소프트웨어 벤더를 위�
 
 ---
 
+## 📸 Screenshots / 스크린샷
+
+> 실데이터(라이선스 키·사용자 정보)는 마스킹 처리했습니다. / *Live data (license keys, user info) is masked.*
+
+<div align="center">
+
+**대시보드** — 전체·활성 라이선스, 최근 접속 기기, 만료 임박(D-day)을 한눈에  
+*Dashboard — total/active licenses, recently-seen devices, and expiring-soon (D-day) at a glance*
+
+<img src="docs/screenshots/dashboard.png" width="88%" alt="LicenseOS 대시보드 — 라이선스 현황·최근 접속·만료 임박" />
+
+<br/><br/>
+
+**프로그램 워크스페이스** — 프로그램별 라이선스 필터·정렬·발급과 날짜 기반 유효기간·기기 관리  
+*Program workspace — per-program license filter/sort/issue with date-based expiry & device management*
+
+<img src="docs/screenshots/workspace.png" width="88%" alt="LicenseOS 프로그램 워크스페이스 — 라이선스 필터·정렬·발급" />
+
+</div>
+
+---
+
 ## 🛠️ Tech Stack / 기술 스택
 
 ### Backend
