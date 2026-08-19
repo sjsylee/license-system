@@ -15,9 +15,9 @@
 
 ## 🎯 Problem / 문제인식
 
-Electron 데스크톱 앱을 배포하는 벤더로서, 초기에는 **Cloudflare KV**에 `{id, secretKey, expiry}` 형태로 사용자를 하나씩 넣어 라이선스를 검증했습니다. 사용자가 **50명을 넘어가면서** 단일 JSON을 손으로 관리하는 방식이 한계에 부딪혔습니다. flat key-value 구조라서 ― (1) **프로그램(제품) 구분이 없어** 한 사용자가 여러 제품을 쓰면 관리할 수 없고, (2) **키당 기기 수 제한**이 불가능하며(HWID 개념 부재), (3) **제품별 메타데이터**를 검증 응답에 실을 수 없고, (4) `expiry`가 raw timestamp라 발급할 때마다 **수기 계산**이 필요했습니다. 게다가 검증 API는 앱 시작 시 호출되므로 **무인증 공개**여야 하고, 그 자체가 가장 큰 공격 표면이었습니다.
+Electron 데스크톱 앱을 배포하는 벤더로서, 초기에는 **Cloudflare KV**에 `{id, secretKey, expiry}` 형태로 라이선스를 하나씩 넣어 검증했습니다. 프로그램과 라이선스가 늘어나면서 단일 JSON을 손으로 관리하는 방식은 한계에 부딪혔습니다. flat key-value 구조라서 ― (1) **프로그램(제품) 구분이 없어** 한 라이선스 체계에서 여러 제품을 나누기 어렵고, (2) **키당 기기 수 제한**이 불가능하며(HWID 개념 부재), (3) **제품별 메타데이터**를 검증 응답에 실을 수 없고, (4) `expiry`가 raw timestamp라 발급할 때마다 **수기 계산**이 필요했습니다. 현재는 12개 프로그램의 100개 이상 라이선스를 관리합니다. 검증 API는 앱 시작 시 호출되므로 **무인증 공개**여야 하고, 그 자체가 가장 큰 공격 표면이었습니다.
 
-As a vendor shipping Electron desktop apps, I initially validated licenses by hand-entering users as `{id, secretKey, expiry}` into **Cloudflare KV**. Past **50+ users**, managing a single JSON by hand hit a wall: a flat key-value store meant (1) no notion of a *program/product*, so one user across multiple products was unmanageable, (2) no per-key device limits (no HWID), (3) no per-product metadata in the validation response, and (4) `expiry` as a raw timestamp forced manual date math on every issue. On top of that, the validation API is called at app startup, so it must be **public (no auth)** — the single largest attack surface.
+As a vendor shipping Electron desktop apps, I initially validated licenses by hand-entering `{id, secretKey, expiry}` records into **Cloudflare KV**. As the program and license inventory grew, managing one flat JSON structure became difficult: there was no program boundary, no per-license device limit, no per-program metadata, and each raw expiry timestamp required manual conversion. The current system manages more than 100 licenses across 12 programs. The validation API is called at app startup, so it must remain **public (no auth)** and therefore needs a deliberately narrow response contract and abuse controls.
 
 ---
 
@@ -28,13 +28,13 @@ KV의 flat 구조로는 위 네 가지를 근본적으로 풀 수 없다고 판�
 - **프로그램 단위 키 관리** — 제품별로 라이선스를 발급·격리합니다 (`models/program.py`, `license.py`)
 - **키당 기기 제한** — HWID 지문으로 활성 기기를 등록·제한하고, 한도 내에서 자동 등록합니다 (`domain/device_activation.py`)
 - **프로그램별 메타 스키마** — 제품마다 커스텀 변수를 정의해 검증 응답에 주입합니다 (`domain/program_meta.py`)
-- **무손실 이관** — 기존 KV 데이터를 버리지 않고, legacy JSON을 **행 단위 성공/실패 리포트**로 검증하며 새 스키마로 이관합니다 (`app/admin/migrate`)
+- **이관 전 검토와 처리 결과** — legacy JSON을 옮기기 전에 내용을 미리 확인하고, 항목별 처리 결과를 확인할 수 있게 했습니다 (`app/admin/migrate`)
 - **데이터 밀도 높은 어드민 UI** — 대시보드·프로그램 워크스페이스의 상태·파생 로직을 `lib` 레이어로 분리해 관리합니다 (React · Next.js · TypeScript · Ant Design)
-- **공개 엔드포인트 방어** — 검증 API를 always-200으로 설계하고, error_code 축소·다차원 rate limit·nginx 하드닝으로 공격 표면을 좁혔습니다
+- **공개 엔드포인트 방어** — 라이선스 비즈니스 오류를 제한된 응답 계약으로 전달하고, error_code 축소·다차원 rate limit·nginx 하드닝으로 공격 표면을 좁혔습니다
 
-이 저장소의 대표 테마는 **보안·운영 신뢰성**입니다. 빠르게 훑고 싶다면 대표 의사결정 2개부터 보세요: [always-200 검증 API 설계](#2-라이선스-검증-api가-항상-http-200을-반환하도록-설계한-이유) · [Cloudflare Tunnel 중복 커넥터 502](#6-cloudflare-tunnel-커넥터-중복으로-인한-502).
+이 저장소의 대표 테마는 **보안·운영 신뢰성**입니다. 빠르게 훑고 싶다면 대표 의사결정 2개부터 보세요: [라이선스 검증 응답 계약](#2-라이선스-검증-오류를-응답-본문으로-전달하도록-설계한-이유) · [Cloudflare Tunnel 중복 커넥터 502](#6-cloudflare-tunnel-커넥터-중복으로-인한-502).
 
-Judging that a flat KV store could never solve those four issues, I **redesigned** the system around a three-tier relational model: **Program (product) → License → Device**. Program-scoped keys, HWID-based per-key device limits, per-program meta schemas injected into the validation response, and a lossless migration path from legacy KV JSON (imported with a row-by-row success/failure report). The public validation endpoint is hardened with an always-200 protocol, reduced error codes, multi-dimensional rate limits, and nginx-level controls. The flagship theme of this repo is **security & operational reliability**.
+Judging that a flat KV store could not support those relationships, I **redesigned** the system around a three-tier model: **Program (product) → License → Device**. It adds program-scoped licenses, HWID-based device limits, per-program metadata, and a migration screen that previews legacy JSON and reports the result of each item. License-related business validation failures use a constrained `valid:false` response contract, while rate limits and nginx controls protect the public endpoint. The flagship theme of this repo is **security & operational reliability**.
 
 > 🤖 이 저장소는 `AGENTS.md` / `CLAUDE.md`로 AI 코딩 에이전트(Claude Code · Codex) 협업 규칙을 명시하고, 아키텍처·보안 결정과 검증은 직접 주도했습니다.
 
@@ -57,9 +57,9 @@ Electron 기반 데스크톱 앱을 배포하는 소프트웨어 벤더를 위�
 | **유연한 메타 변수** | 프로그램별 커스텀 변수 스키마(`max_collection_count` 등)를 검증 응답에 주입 | Per-program custom variable schemas injected into responses |
 | **이중 토큰 인증** | Access + Refresh Token 자동 로테이션, Refresh Token은 `httpOnly` 쿠키에 저장 | Access + Refresh token rotation; refresh in `httpOnly` cookie |
 | **라이선스 연락처** | 판매 후 지원을 위한 선택 필드(`user_id`·`email`·`phone`) | Optional contact fields for post-sale support |
-| **Always-200 검증 프로토콜** | 항상 HTTP 200을 반환하고 오류는 `valid: false` + `error_code`로 전달해, 예기치 못한 상태 코드로 데스크톱 앱이 죽지 않게 함 | Always returns HTTP 200; errors via `valid:false` + `error_code` |
+| **라이선스 검증 응답 계약** | 유효성·만료·기기 한도 같은 비즈니스 검증 실패를 HTTP 200과 `valid: false` + 제한된 `error_code`로 전달 | License business-rule failures use HTTP 200 with `valid:false` and a constrained `error_code` |
 | **데이터 밀도 높은 어드민 콘솔** | 대시보드(활성/만료임박/최근접속)와 프로그램 워크스페이스, 파생 로직을 전역 스토어 대신 `lib` 레이어로 분리 | Data-dense console; derivation split into a `lib` layer |
-| **레거시 KV 마이그레이션** | 레거시 Cloudflare KV JSON을 행 단위 성공/실패 리포트와 함께 새 스키마로 이관 | Import legacy KV JSON with per-row success/failure reporting |
+| **레거시 KV 마이그레이션** | 레거시 Cloudflare KV JSON을 이관 전에 미리 확인하고 항목별 처리 결과와 함께 새 스키마로 이관 | Preview legacy KV JSON before migration and show item-level processing results |
 | **GitHub Release 연결** | 각 프로그램 페이지에서 해당 제품의 GitHub Release로 바로 연결해 발급→배포 동선 일원화 | Link each program page to its GitHub Release page |
 
 ---
@@ -186,9 +186,9 @@ http://localhost:8001/redoc    # ReDoc
 
 ### Validation API Design
 
-검증 엔드포인트(`POST /v1/validate`)는 이 시스템의 핵심 공개 API입니다. 데스크톱 앱의 크래시를 막기 위해 **항상 HTTP 200**을 반환하고, 오류는 구조화된 응답 본문으로 전달합니다.
+검증 엔드포인트(`POST /v1/validate`)는 이 시스템의 핵심 공개 API입니다. 라이선스 유효성·만료·기기 한도 같은 **비즈니스 검증 실패는 HTTP 200**과 구조화된 응답 본문으로 전달합니다. 프록시·네트워크·서버 장애까지 이 계약에 포함하지는 않습니다.
 
-*The validate endpoint is the core public-facing API. It always returns **HTTP 200** to prevent desktop-app crashes, conveying errors via a structured body:*
+*The validate endpoint is the core public-facing API. License business-rule failures use **HTTP 200** with a structured response body; proxy, network, and server failures are outside this contract:*
 
 ```json
 // Valid license
@@ -283,9 +283,9 @@ http://localhost:8001/redoc    # ReDoc
 
 **성과**
 
-- KV 단일 JSON 수기 관리(50+)에서 **프로그램 / 사용자 / 기기 / 메타로 구조화**했고, 대시보드에서 **만료 임박(D-day) · 최근 접속 기기**를 한눈에 파악하도록 구성해 운영 부담을 낮췄습니다.
-- 기존 KV 데이터를 **행 단위 성공/실패 리포트**로 검증하며 새 스키마로 이관해, 이관 누락 여부를 확인 가능한 형태로 처리했습니다.
-- 공개 validate에 3중 abuse control(IP `120/분` · key `30/분` · IP+key `20/분`)을 적용하고, **성공 요청은 예산을 소모하지 않도록** 설계해 정상 사용자에 대한 영향 없이 무인증 남용만 차단했습니다.
+- KV에서 개별 키를 수정하던 방식을 **Program → License → Device와 프로그램별 메타데이터 구조**로 전환하고, 12개 프로그램의 100개 이상 라이선스를 한 관리 화면에서 다루도록 구성했습니다.
+- 기존 KV JSON을 옮기기 전에 내용을 미리 확인하고 항목별 처리 결과를 보여주는 이관 기능으로 실제 데이터를 새 구조로 옮겼습니다.
+- 공개 validate에 3중 abuse control(IP `120/분` · key `30/분` · IP+key `20/분`)을 적용하고, 애플리케이션 레벨에서는 유효하지 않은 검증 요청을 기준으로 카운트하도록 구성했습니다.
 - 외부 노출 error code를 **5종 → 4종**으로 축소해, 라이선스 / 프로그램 존재 여부를 추측할 수 있는 표면을 제거했습니다.
 - 실운영 중 발생한 502 장애를 **Cloudflare Live logs의 커넥터 컬럼**으로 원인을 규명해 해결했습니다.
 
@@ -389,11 +389,11 @@ See [`.env.example`](.env.example) for the full list of required environment var
 
 `hashlib.sha256`으로 해싱한 뒤 저장하도록 변경했고, 검증 시에도 요청으로 받은 토큰을 동일하게 해싱해서 비교하는 방식으로 처리했습니다. 비밀번호 해싱처럼 bcrypt를 쓰지 않은 이유는, Refresh Token은 이미 충분한 엔트로피를 가진 랜덤 값(`secrets.token_urlsafe(32)`)이라 salt 없이 SHA-256만으로도 실질적인 보안 수준이 유지되기 때문입니다.
 
-### 2. 라이선스 검증 API가 항상 HTTP 200을 반환하도록 설계한 이유
+### 2. 라이선스 검증 오류를 응답 본문으로 전달하도록 설계한 이유
 
 초기 설계에서는 유효하지 않은 라이선스에 대해 HTTP 403을 반환했는데, 이 방식은 데스크톱 앱 클라이언트 입장에서 예외 처리가 복잡해지는 문제가 있었습니다. 특히 네트워크 오류(timeout, 503 등)와 라이선스 오류를 구분해서 처리해야 할 때 클라이언트 코드가 지저분해졌습니다.
 
-항상 HTTP 200을 반환하되 `valid: false` + `error_code`로 이유를 전달하는 방식으로 바꿨습니다. 클라이언트는 네트워크 예외와 비즈니스 로직 오류를 분리해서 처리할 수 있게 됐고, 코드도 단순해졌습니다. 단, 이 엔드포인트가 공개 API이므로 응답 본문에 내부 구현 정보가 노출되지 않도록 `error_code`는 사전에 정의된 값만 반환하도록 제한했습니다.
+라이선스 유효성·만료·기기 한도 같은 비즈니스 검증 실패는 HTTP 200과 `valid: false` + `error_code`로 이유를 전달하도록 바꿨습니다. 클라이언트는 네트워크 예외와 라이선스 오류를 분리해서 처리할 수 있게 됐습니다. 이 엔드포인트가 공개 API이므로 응답 본문에 내부 구현 정보가 노출되지 않도록 `error_code`는 사전에 정의된 값만 반환하도록 제한했습니다.
 
 ### 3. `exclude_none` → `exclude_unset` 변경으로 null 값 명시 처리
 
