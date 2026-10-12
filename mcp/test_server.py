@@ -20,11 +20,11 @@ def iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).replace(tzinfo=None).isoformat()  # 백엔드처럼 tz 없는 UTC
 
 
-def lic(id, days, active=True, email=None, **kw):
+def lic(id, days, active=True, email=None, phone=None, **kw):
     return {
         "id": id, "program_id": 1, "username": f"user{id}", "license_key": "AAAAAAAA-BBBBBBBB-CCCCCCCC-DDDD1234",
         "expires_at": iso(NOW + timedelta(days=days)) if days is not None else None, "max_devices": 2,
-        "is_active": active, "created_at": iso(NOW), "user_id": f"u{id}", "email": email, "phone": None,
+        "is_active": active, "created_at": iso(NOW), "user_id": f"u{id}", "email": email, "phone": phone,
         "meta": [], "devices": [], **kw,
     }
 
@@ -58,7 +58,7 @@ class FakeAPI:
 
 @pytest.fixture
 def api(tmp_path, monkeypatch):
-    fake = FakeAPI([lic(1, 2, email="a@x.com"), lic(2, 10), lic(3, 40), lic(4, 5, active=False), lic(5, -1), lic(6, None)])
+    fake = FakeAPI([lic(1, 2, email="a@x.com", phone="010-1111-2222", devices=[{"id": 1, "hwid": "HW", "device_name": "PC", "activated_at": iso(NOW), "last_seen_at": iso(NOW)}]), lic(2, 10), lic(3, 40), lic(4, 5, active=False), lic(5, -1), lic(6, None)])
     server._client = server.LicenseOSClient("http://test", "admin", "pw", transport=httpx.MockTransport(fake.handler))
     monkeypatch.setattr(server, "EXPORT_DIR", tmp_path)
     yield fake
@@ -73,8 +73,21 @@ def test_list_expiring_filters_and_hides_secrets(api):
     rows = run(server.list_expiring(days=30))
     assert [r["license_id"] for r in rows] == [1, 2]  # 비활성·만료·무기한·30일 초과 제외, 남은 일수 순
     assert rows[0]["license_key_tail"] == "1234" and rows[0]["has_email"] is True
-    flat = json.dumps(rows)
-    assert "a@x.com" not in flat and "AAAAAAAA" not in flat
+
+
+def test_no_tool_output_leaks_key_or_contact(api):
+    """모델로 나가는 모든 도구 응답에 키 원문·연락처가 없어야 한다 (export 는 경로만)."""
+    target = (NOW + timedelta(days=40)).astimezone(server.KST).strftime("%Y-%m-%d")
+    outputs = [
+        run(server.list_programs()),
+        run(server.list_expiring(days=365)),
+        run(server.get_license(1)),
+        run(server.export_expiring_contacts(days=365)),
+        run(server.extend_license(1, target)),
+        run(server.extend_license(1, target, confirm=True)),
+    ]
+    flat = json.dumps(outputs, ensure_ascii=False)
+    assert "a@x.com" not in flat and "AAAAAAAA" not in flat and "010-" not in flat
 
 
 def test_relogin_once_on_401(api):
@@ -102,7 +115,7 @@ def test_extend_confirm_writes_and_keeps_time(api):
     before = server.parse_backend_date(api.licenses[1]["expires_at"])
     target = (NOW + timedelta(days=40)).astimezone(server.KST).strftime("%Y-%m-%d")
     result = run(server.extend_license(1, target, confirm=True))
-    assert result["applied"] is True and result["saved_expiry_kst"] == target
+    assert result["applied"] is True and result["expires_at_kst"] == target
     after = server.parse_backend_date(api.licenses[1]["expires_at"])
     assert (after.hour, after.minute) == (before.hour, before.minute)
 
@@ -115,6 +128,15 @@ def test_extend_rejects_earlier_date_and_permanent(api):
     assert api.patches == []
 
 
-def test_days_until_uses_kst_calendar():
+def test_expiry_days_left_uses_kst_calendar():
     now = datetime(2026, 10, 12, 14, 0, tzinfo=timezone.utc)  # KST 10/12 23:00
-    assert server.days_until(datetime(2026, 10, 12, 16, 0, tzinfo=timezone.utc), now) == 1  # KST 10/13 01:00
+    assert server.Expiry(datetime(2026, 10, 12, 16, 0, tzinfo=timezone.utc)).days_left(now) == 1  # KST 10/13 01:00
+
+
+def test_expiry_extended_to_rules():
+    expiry = server.Expiry.of({"expires_at": "2026-10-20T05:30:00"})  # KST 10/20 14:30
+    assert expiry.extended_to("2026-12-31").astimezone(server.KST).strftime("%Y-%m-%d %H:%M") == "2026-12-31 14:30"
+    for bad in ("2026-10-20", "2026-10-01", "12/31"):
+        with pytest.raises(server.ToolError):
+            expiry.extended_to(bad)
+    assert server.Expiry.of({"expires_at": None}) is None

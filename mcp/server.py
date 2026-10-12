@@ -10,6 +10,7 @@
 import csv
 import logging
 import os
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -65,7 +66,7 @@ class LicenseOSClient:
         return (await self.request("PATCH", f"/admin/licenses/{license_id}", json=body)).json()
 
 
-# ── 날짜 규칙: 프론트엔드 lib/license-status.ts 와 동일 ─────────────
+# ── 만료일 규칙: 프론트엔드 lib/license-status.ts 와 동일 ─────────────
 # 백엔드는 tz 없는 UTC를 내려주고, 남은 일수는 KST 달력 기준으로 센다.
 
 def parse_backend_date(value: str) -> datetime:
@@ -73,34 +74,65 @@ def parse_backend_date(value: str) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def days_until(expires_at: datetime, now: datetime) -> int:
-    return (expires_at.astimezone(KST).date() - now.astimezone(KST).date()).days
+def kst_date(dt: datetime) -> str:
+    return dt.astimezone(KST).strftime("%Y-%m-%d")
+
+
+@dataclass(frozen=True)
+class Expiry:
+    """라이선스 만료 시각 하나에 대한 규칙(남은 일수·표시·연장)."""
+
+    at: datetime  # tz-aware
+
+    @classmethod
+    def of(cls, license_: dict) -> "Expiry | None":
+        value = license_.get("expires_at")
+        return cls(parse_backend_date(value)) if value else None  # None = 무기한
+
+    def days_left(self, now: datetime) -> int:
+        return (self.at.astimezone(KST).date() - now.astimezone(KST).date()).days
+
+    def is_expired(self, now: datetime) -> bool:
+        return self.at < now
+
+    def extended_to(self, new_date: str) -> datetime:
+        """KST 날짜(YYYY-MM-DD)로 옮긴 새 만료 시각. 기존 시:분은 유지하고, 지금보다 늦은 날짜만 허용한다."""
+        try:
+            target = date.fromisoformat(new_date)
+        except ValueError:
+            raise ToolError("new_expiry_date 는 YYYY-MM-DD 형식이어야 합니다.") from None
+        current = self.at.astimezone(KST)
+        new_at = current.replace(year=target.year, month=target.month, day=target.day)
+        if new_at <= current:
+            raise ToolError(f"새 만료일은 현재 만료일({kst_date(current)})보다 늦어야 합니다.")
+        return new_at
 
 
 def expiring_within(licenses: list[dict], days: int, now: datetime) -> list[dict]:
     """활성 상태이고 아직 만료되지 않았으며 남은 일수가 0~days 인 라이선스 (남은 일수 오름차순)."""
     result = []
     for lic in licenses:
-        if not lic.get("is_active") or not lic.get("expires_at"):
+        expiry = Expiry.of(lic)
+        if not lic.get("is_active") or expiry is None or expiry.is_expired(now):
             continue
-        expires_at = parse_backend_date(lic["expires_at"])
-        if expires_at < now:
-            continue
-        left = days_until(expires_at, now)
-        if 0 <= left <= days:
+        left = expiry.days_left(now)
+        if left <= days:
             result.append({**lic, "days_left": left})
     return sorted(result, key=lambda lic: lic["days_left"])
 
 
-def public_view(lic: dict, program_name: str | None = None) -> dict:
-    """모델에 넘겨도 되는 필드만 남긴다. 키는 끝 4자리, 연락처는 보유 여부만."""
+# ── 모델로 나가는 값: 모든 도구 응답은 여기를 거친다 ─────────────────
+# 라이선스 키는 끝 4자리, 연락처는 보유 여부만. 연락처 원문은 export CSV에만 쓴다.
+
+def model_view(lic: dict, program: str | None = None, *, with_devices: bool = False) -> dict:
+    expiry = Expiry.of(lic)
     view = {
         "license_id": lic["id"],
-        "program": program_name,
+        "program": program,
         "username": lic["username"],
         "user_id": lic.get("user_id"),
         "license_key_tail": lic["license_key"][-4:],
-        "expires_at_kst": parse_backend_date(lic["expires_at"]).astimezone(KST).strftime("%Y-%m-%d") if lic.get("expires_at") else None,
+        "expires_at_kst": kst_date(expiry.at) if expiry else None,
         "is_active": lic["is_active"],
         "max_devices": lic["max_devices"],
         "active_devices": len(lic.get("devices") or []),
@@ -109,6 +141,11 @@ def public_view(lic: dict, program_name: str | None = None) -> dict:
     }
     if "days_left" in lic:
         view["days_left"] = lic["days_left"]
+    if with_devices:
+        view["devices"] = [
+            {"device_name": d.get("device_name"), "last_seen_at_kst": parse_backend_date(d["last_seen_at"]).astimezone(KST).strftime("%Y-%m-%d %H:%M")}
+            for d in lic.get("devices") or []
+        ]
     return view
 
 
@@ -168,19 +205,13 @@ async def list_expiring(days: int = 30, program_id: int | None = None) -> list[d
     """
     if not 0 <= days <= 365:
         raise ToolError("days 는 0~365 사이여야 합니다.")
-    return [public_view(lic, name) for lic, name in await _expiring(days, program_id)]
+    return [model_view(lic, name) for lic, name in await _expiring(days, program_id)]
 
 
 @mcp.tool(annotations=READ_ONLY)
 async def get_license(license_id: int) -> dict:
     """라이선스 한 건의 상태, 만료일, 등록 기기(이름·마지막 접속)를 반환한다."""
-    lic = await client().license(license_id)
-    view = public_view(lic)
-    view["devices"] = [
-        {"device_name": d.get("device_name"), "last_seen_at_kst": parse_backend_date(d["last_seen_at"]).astimezone(KST).strftime("%Y-%m-%d %H:%M")}
-        for d in lic.get("devices") or []
-    ]
-    return view
+    return model_view(await client().license(license_id), with_devices=True)
 
 
 @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False))
@@ -196,8 +227,7 @@ async def export_expiring_contacts(days: int = 30, program_id: int | None = None
         writer = csv.writer(f)
         writer.writerow(["프로그램", "사용자", "사용자 ID", "이메일", "전화번호", "만료일(KST)", "남은 일수", "license_id"])
         for lic, name in rows:
-            view = public_view(lic, name)
-            writer.writerow([name, lic["username"], lic.get("user_id") or "", lic.get("email") or "", lic.get("phone") or "", view["expires_at_kst"], lic["days_left"], lic["id"]])
+            writer.writerow([name, lic["username"], lic.get("user_id") or "", lic.get("email") or "", lic.get("phone") or "", kst_date(Expiry.of(lic).at), lic["days_left"], lic["id"]])
     return {"path": str(path), "count": len(rows), "without_contact": sum(1 for lic, _ in rows if not lic.get("email") and not lic.get("phone"))}
 
 
@@ -209,28 +239,20 @@ async def extend_license(license_id: int, new_expiry_date: str, confirm: bool = 
     기존 만료 시각(시:분)은 유지하며, 현재 만료일보다 늦은 날짜만 허용한다.
     """
     lic = await client().license(license_id)
-    if not lic.get("expires_at"):
+    expiry = Expiry.of(lic)
+    if expiry is None:
         raise ToolError("무기한 라이선스는 연장할 수 없습니다.")
-    current = parse_backend_date(lic["expires_at"]).astimezone(KST)
-    target_date = date.fromisoformat(new_expiry_date)
-    new_kst = current.replace(year=target_date.year, month=target_date.month, day=target_date.day)
-    if new_kst <= current:
-        raise ToolError(f"새 만료일은 현재 만료일({current:%Y-%m-%d})보다 늦어야 합니다.")
-
+    new_at = expiry.extended_to(new_expiry_date)
     preview = {
-        "license_id": license_id,
-        "username": lic["username"],
-        "current_expiry_kst": f"{current:%Y-%m-%d}",
-        "new_expiry_kst": f"{new_kst:%Y-%m-%d}",
-        "extended_days": (new_kst.date() - current.date()).days,
-        "is_active": lic["is_active"],
+        **model_view(lic),
+        "new_expires_at_kst": kst_date(new_at),
+        "extended_days": (new_at.date() - expiry.at.astimezone(KST).date()).days,
     }
     if not confirm:
         return {**preview, "applied": False, "note": "미리보기입니다. 사용자 승인 후 confirm=true 로 다시 호출하세요."}
 
-    updated = await client().update_license(license_id, {"expires_at": new_kst.astimezone(timezone.utc).isoformat()})
-    return {**preview, "applied": True, "saved_expiry_kst": parse_backend_date(updated["expires_at"]).astimezone(KST).strftime("%Y-%m-%d")}
-
+    updated = await client().update_license(license_id, {"expires_at": new_at.astimezone(timezone.utc).isoformat()})
+    return {**model_view(updated), "applied": True}
 
 if __name__ == "__main__":
     mcp.run("stdio")
