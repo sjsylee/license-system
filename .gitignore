@@ -34,3 +34,8 @@ docker-compose.override.yml
 
 # 개인 배포 노트 (git 비공개)
 DEPLOY.md
+
+# MCP 서버
+mcp/.venv/
+mcp/exports/
+.pytest_cache/
