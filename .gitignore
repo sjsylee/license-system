@@ -39,3 +39,6 @@ DEPLOY.md
 mcp/.venv/
 mcp/exports/
 .pytest_cache/
+
+# MCP 안내용 연락처 CSV (고객 개인정보)
+mcp/exports/
